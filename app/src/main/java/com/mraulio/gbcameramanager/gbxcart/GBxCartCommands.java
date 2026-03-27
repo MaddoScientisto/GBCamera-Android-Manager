@@ -50,26 +50,158 @@ public class GBxCartCommands {
     private static FileOutputStream fos = null;
     private static BufferedOutputStream bos = null;
 
-    public static void powerOff(UsbSerialPort port, Context context) {
-        byte[] command = new byte[1];
-        int com = GBxCartConstants.DEVICE_CMD.get("OFW_CART_PWR_OFF");
-        command[0] = (byte) com; //POWER OFF
+    private static int firmwareVersion = -1;
+    public static boolean powerControlSupport = false;
+    public static boolean bootloaderResetSupport = false;
+    public static String deviceName = "";
+
+    public static void readFirmwareInfo(UsbSerialPort port) {
         try {
-            port.write(command, TIMEOUT);//VER LO DE LOS TIMEOUTS
+            Integer cmd = GBxCartConstants.DEVICE_CMD.get("QUERY_FW_INFO");
+
+            byte[] command = new byte[]{ (byte)(cmd & 0xFF) };
+            port.write(command, TIMEOUT);
+
+            // Read up to ~64 bytes
+            byte[] buffer = new byte[64];
+            int len = -1;
+
+            try {
+                len = port.read(buffer, 100);   // one read, one timeout
+            } catch (Exception e) {
+                //Toast.makeText(context, "Error en readFirmwareInfo (no response)\n" + e.toString(), Toast.LENGTH_LONG).show();
+            }
+
+            byte[] data = Arrays.copyOf(buffer, len);
+
+            // Parse firmwareVersion
+            int firmwareVersion = ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
+
+            // ---------- L1 ----------
+            if (firmwareVersion < 2) {
+                GBxCartCommands.firmwareVersion = firmwareVersion;
+                GBxCartCommands.powerControlSupport = false;
+                GBxCartCommands.bootloaderResetSupport = false;
+                GBxCartCommands.deviceName = "GBxCart RW";
+            }
+
+            // ---------- L2–L11 ----------
+            if (firmwareVersion < 12) {
+                GBxCartCommands.firmwareVersion = firmwareVersion;
+                GBxCartCommands.powerControlSupport = true;
+                GBxCartCommands.bootloaderResetSupport = false;
+                GBxCartCommands.deviceName = "GBxCart RW";
+            }
+
+            // ---------- L12+ ----------
+            int deviceNameLength = data[9] & 0xFF;
+
+            // Extract device name
+            String deviceName = "GBxCart RW";
+            if (deviceNameLength > 1) {
+                deviceName = new String(data, 10, deviceNameLength - 1);
+            }
+
+            int flagsIndex = 10 + deviceNameLength;
+            boolean powerCtrl = false;
+            boolean bootReset = false;
+
+            if (data.length >= flagsIndex + 2) {
+                powerCtrl = (data[flagsIndex] & 0xFF) != 0;
+                bootReset = (data[flagsIndex + 1] & 0xFF) != 0;
+            }
+
+            // Store globally
+            GBxCartCommands.firmwareVersion = firmwareVersion;
+            GBxCartCommands.powerControlSupport = powerCtrl;
+            GBxCartCommands.bootloaderResetSupport = bootReset;
+            GBxCartCommands.deviceName = deviceName;
 
         } catch (Exception e) {
+            //Toast.makeText(context, "Error en readFirmwareInfo (Unknown error)\n" + e.toString(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private static boolean waitForAck(UsbSerialPort port) {
+        byte[] ack = new byte[1];
+        try {
+            int len = port.read(ack, TIMEOUT);
+            if (len == 1 && ack[0] == 1) {
+                return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private static void delay(int ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException ignored) {}
+    }
+
+    public static void powerOff(UsbSerialPort port, Context context) {
+        byte[] command = new byte[1];
+        int cmd;
+        if (firmwareVersion >= 12) {
+            cmd = GBxCartConstants.DEVICE_CMD.get("CART_PWR_OFF");
+            command[0] = (byte) cmd;
+            try {
+                port.write(command, TIMEOUT);
+                waitForAck(port);
+
+            } catch (Exception e) {
 //            Toast.makeText(context, "Error en PowerOff\n" + e.toString(), Toast.LENGTH_LONG).show();
+            }
+        } else if (firmwareVersion >= 2 && firmwareVersion <= 11) {
+            cmd = GBxCartConstants.DEVICE_CMD.get("OFW_CART_PWR_OFF");
+            command[0] = (byte) cmd;
+            try {
+                port.write(command, TIMEOUT);
+            } catch (Exception e) {
+//            Toast.makeText(context, "Error en PowerOff\n" + e.toString(), Toast.LENGTH_LONG).show();
+            }
+            delay(200);
+        } else {
+            cmd = GBxCartConstants.DEVICE_CMD.get("OFW_CART_PWR_OFF");
+            command[0] = (byte) cmd;
+            try {
+                port.write(command, TIMEOUT);
+            } catch (Exception e) {
+//            Toast.makeText(context, "Error en PowerOff\n" + e.toString(), Toast.LENGTH_LONG).show();
+            }
         }
     }
 
     public static void powerOn(UsbSerialPort port, Context context) {
         byte[] command = new byte[1];
-        try {
-            command[0] = (byte) 0x2F;//OFW_CART_PWR_ON
-            port.write(command, TIMEOUT);
+        int cmd;
+        if (firmwareVersion >= 12) {
+            cmd = GBxCartConstants.DEVICE_CMD.get("CART_PWR_ON");
+            command[0] = (byte) cmd;
+            try {
+                port.write(command, TIMEOUT);
+                waitForAck(port);
 
-        } catch (Exception e) {
-//            Toast.makeText(context, "Error en PowerOn\n" + e.toString(), Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+//            Toast.makeText(context, "Error en PowerOff\n" + e.toString(), Toast.LENGTH_LONG).show();
+            }
+        } else if (firmwareVersion >= 2 && firmwareVersion <= 11) {
+            cmd = GBxCartConstants.DEVICE_CMD.get("OFW_CART_PWR_ON");
+            command[0] = (byte) cmd;
+            try {
+                port.write(command, TIMEOUT);
+            } catch (Exception e) {
+//            Toast.makeText(context, "Error en PowerOff\n" + e.toString(), Toast.LENGTH_LONG).show();
+            }
+            delay(200);
+        } else {
+            cmd = GBxCartConstants.DEVICE_CMD.get("OFW_CART_PWR_ON");
+            command[0] = (byte) cmd;
+            try {
+                port.write(command, TIMEOUT);
+            } catch (Exception e) {
+//            Toast.makeText(context, "Error en PowerOff\n" + e.toString(), Toast.LENGTH_LONG).show();
+            }
         }
     }
 
@@ -77,13 +209,23 @@ public class GBxCartCommands {
         byte[] command = new byte[1];
 
         try {
-            int com = GBxCartConstants.DEVICE_CMD.get("SET_MODE_DMG");
-            command[0] = (byte) com; //SET_MODE_DMG
-            port.write(command, TIMEOUT);
+            int cmd = GBxCartConstants.DEVICE_CMD.get("SET_MODE_DMG");
+            command[0] = (byte) cmd; //SET_MODE_DMG
+            if (firmwareVersion < 12) {
+                port.write(command, TIMEOUT);
+            } else {
+                port.write(command, TIMEOUT);
+                waitForAck(port);
+            }
 
-            com = GBxCartConstants.DEVICE_CMD.get("SET_VOLTAGE_5V");
-            command[0] = (byte) com; //SET_VOLTAGE_5V
-            port.write(command, TIMEOUT);
+            cmd = GBxCartConstants.DEVICE_CMD.get("SET_VOLTAGE_5V");
+            command[0] = (byte) cmd; //SET_VOLTAGE_5V
+            if (firmwareVersion < 12) {
+                port.write(command, TIMEOUT);
+            } else {
+                port.write(command, TIMEOUT);
+                waitForAck(port);
+            }
 
             setFwVariable("DMG_READ_METHOD", 1, port, context);
 
@@ -113,7 +255,7 @@ public class GBxCartCommands {
             }
         }
         int temp = GBxCartConstants.DEVICE_CMD.get("SET_VARIABLE");
-        ByteBuffer bb = ByteBuffer.allocate(13);
+        ByteBuffer bb = ByteBuffer.allocate(10);
         bb.order(ByteOrder.BIG_ENDIAN);
         bb.put((byte) temp);
         bb.put((byte) size);
@@ -121,22 +263,26 @@ public class GBxCartCommands {
         bb.putInt(value);
         byte[] byteArray = bb.array();
         try {
-            port.write(byteArray, TIMEOUT);
+            if (firmwareVersion < 12) {
+                port.write(byteArray, TIMEOUT);
+                delay(10);
+            } else {
+                port.write(byteArray, TIMEOUT);
+                waitForAck(port);
+            }
         } catch (Exception e) {
 //            Toast.makeText(context, "ErrorsetFwVariable" + e.toString(), Toast.LENGTH_LONG).show();
         }
     }
 
-    private static byte[] CartRead_ROM(int address, int length, UsbSerialPort port, Context context, TextView tv) {
+    private static byte[] CartRead_ROM(int length, UsbSerialPort port, Context context, TextView tv) {
         int max_length = 64;
-        int num = (int) Math.ceil((double) length / (double) max_length);
+
         if (length > max_length) {
             length = max_length;
         }
+        int num = (int) Math.ceil((double) length / (double) max_length);
         byte[] buffer = new byte[num * length];
-        setFwVariable("TRANSFER_SIZE", length, port, context);
-        setFwVariable("ADDRESS", address, port, context);
-        setFwVariable("DMG_ACCESS_MODE", 1, port, context); // MODE_ROM_READ
 
         byte[] commandByte = new byte[1];
 
@@ -159,7 +305,12 @@ public class GBxCartCommands {
         byte[] receivedData = new byte[0x10];
 
         try {
-            CartRead_ROM(0x134, 0x10, port, context, tv);
+            setFwVariable("TRANSFER_SIZE", 0x10, port, context);
+            setFwVariable("DMG_ACCESS_MODE", 1, port, context);
+            setFwVariable("DMG_READ_CS_PULSE", 1, port, context);
+            setFwVariable("ADDRESS", 0x134, port, context);
+
+            CartRead_ROM(0x10, port, context, tv);
             int len = port.read(readLength, TIMEOUT);//Intento leer manualmente
             receivedData = (Arrays.copyOf(readLength, len));
 
@@ -178,22 +329,18 @@ public class GBxCartCommands {
         buffer[5] = (byte) (value & 0xFF);
 
         try {
-            port.write(buffer, TIMEOUT);
+            if (firmwareVersion < 12) {
+                port.write(buffer, TIMEOUT);
+            } else {
+                port.write(buffer, TIMEOUT);
+                waitForAck(port);
+            }
         } catch (Exception e) {
 //            Toast.makeText(context, "Error en Cart_write\n" + e.toString(), Toast.LENGTH_LONG).show();
         }
     }
 
     public static void CartRead_RAM(int address, int length, UsbSerialPort port, Context context) {
-        int max_length = 64;
-        int num = (int) Math.ceil((double) length / (double) max_length);
-        if (length > max_length) {
-            length = max_length;
-        }
-        setFwVariable("TRANSFER_SIZE", length, port, context);
-        setFwVariable("ADDRESS", 0xA000 + address, port, context);
-        setFwVariable("DMG_ACCESS_MODE", 3, port, context); // MODE_ROM_READ
-        setFwVariable("DMG_READ_CS_PULSE", 1, port, context);
 
         byte[] commandByte = new byte[1];
 
@@ -267,36 +414,76 @@ public class GBxCartCommands {
 //                Toast toast = Toast.makeText(context, "Error making file: " + e.toString(), Toast.LENGTH_SHORT);
 //                toast.show();
             }
+
+            setFwVariable("TRANSFER_SIZE", 64, port, context);
+            setFwVariable("DMG_ACCESS_MODE", 1, port, context);
+            setFwVariable("DMG_READ_CS_PULSE", 1, port, context);
+
             try {
                 fos = new FileOutputStream(file);
                 bos = new BufferedOutputStream(fos);
-                byte[] readLength = new byte[64];
-                for (int i = 0; i < 64; i++) {
-                    // Set ROM bank
-                    Cart_write(0x2100, i, port, context);
-                    // Read 16 (0x4000) KiB of SRAM
-                    for (int j = 0; j < 256; j++) {
-                        //If first ROM bank, read 0-0x3fff, other banks from 0x4000 0x7fff
-                        if (i == 0) {
-                            CartRead_ROM(j * 64, 64, port, context, tv);
-                        } else {
-                            CartRead_ROM((j * 64) + 0x4000, 64, port, context, tv);
+
+                int bytesPerBank = 0x4000; // 16 KiB
+                int transferSize = 64;
+                int chunksPerBank = bytesPerBank / transferSize;
+
+                setFwVariable("DMG_READ_CS_PULSE", 1, port, context);
+                setFwVariable("DMG_ACCESS_MODE", 1, port, context); // MODE_ROM_READ
+                setFwVariable("TRANSFER_SIZE", transferSize, port, context);
+
+                int totalIterations = 64 * chunksPerBank;
+                int currentIteration = 0;
+
+                for (int bank = 0; bank < 64; bank++) {
+                    // Select ROM bank
+                    Cart_write(0x2100, bank, port, context);
+
+                    // First bank starts at 0, others at 0x4000
+                    if (bank == 0) {
+                        setFwVariable("ADDRESS", 0x0000, port, context);
+                    } else {
+                        setFwVariable("ADDRESS", 0x4000, port, context);
+                    }
+
+                    for (int j = 0; j < chunksPerBank; j++) {
+                        // Send DMG_CART_READ
+                        int cmdInt = GBxCartConstants.DEVICE_CMD.get("DMG_CART_READ");
+                        byte[] cmd = new byte[]{ (byte)(cmdInt & 0xFF) };
+                        port.write(cmd, TIMEOUT);
+
+                        byte[] buffer = new byte[transferSize];
+                        int total = 0;
+
+                        if (firmwareVersion >= 12) { // L12+
+                            while (total < transferSize) {
+                                byte[] temp = new byte[64];
+                                int n = port.read(temp, TIMEOUT);
+                                if (n <= 0) break;
+                                System.arraycopy(temp, 0, buffer, total, n);
+                                total += n;
+                            }
+                        } else { // L2-L11
+                            int len = port.read(buffer, TIMEOUT);
+                            total = (len > 0) ? len : 0;
                         }
-                        int len = port.read(readLength, TIMEOUT);
-                        byte[] receivedData = (Arrays.copyOf(readLength, len));
-                        bos.write(receivedData);
-                        int totalIterations = 64 * 256;
-                        int currentIteration = i * 256 + j + 1;
+
+                        if (total > 0) {
+                            bos.write(buffer, 0, total);
+                        }
+
+                        currentIteration++;
                         int progress = currentIteration * 100 / totalIterations;
                         publishProgress(progress, 0);
                     }
                 }
-                tv.append("\n" + tv.getContext().getString(R.string.done_dumping_photo));
+
                 bos.close();
+                tv.append("\n" + tv.getContext().getString(R.string.done_dumping_photo));
 
             } catch (Exception e) {
                 Toast.makeText(context, "Error en FullReadRom\n" + e.toString(), Toast.LENGTH_LONG).show();
             }
+
             publishProgress(100, 1);
 
             //Now I divide the 1MB file into 8. First will be the gbc rom, next 7 ram files
@@ -416,12 +603,18 @@ public class GBxCartCommands {
             Cart_write(0x6000, 0x01, port, context);
             Cart_write(0x0000, 0x0A, port, context);
 
+            setFwVariable("TRANSFER_SIZE", 64, port, context);
+            setFwVariable("DMG_ACCESS_MODE", 3, port, context);
+            setFwVariable("DMG_READ_CS_PULSE", 1, port, context);
+
             try {
                 fos = new FileOutputStream(file);
                 bos = new BufferedOutputStream(fos);
                 for (int i = 0; i < 16; i++) {
                     // Set SRAM bank
                     Cart_write(0x4000, i, port, context);
+                    // Set ADDRESS once per bank switch
+                    setFwVariable("ADDRESS", 0xA000, port, context);
                     // Read 8 KiB of SRAM
                     for (int j = 0; j < 128; j++) {
                         byte[] readLength = new byte[64];
