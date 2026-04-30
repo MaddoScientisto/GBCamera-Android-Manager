@@ -10,8 +10,8 @@ android {
         applicationId "com.mraulio.gbcameramanager"
         minSdk 23
         targetSdk 33
-        versionCode 6
-        versionName "0.62"
+        versionCode 7
+        versionName "0.70"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {
