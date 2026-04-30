@@ -10,8 +10,8 @@ android {
         applicationId "com.mraulio.gbcameramanager"
         minSdk 23
         targetSdk 33
-        versionCode 6
-        versionName "0.61"
+        versionCode 7
+        versionName "0.70"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {
@@ -44,7 +44,7 @@ dependencies {
     implementation 'com.google.android.material:material:1.10.0'
     implementation 'pl.droidsonroids.gif:android-gif-drawable:1.2.27'
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.github.mik3y:usb-serial-for-android:3.7.0'
+    implementation 'com.github.mik3y:usb-serial-for-android:3.10.0'
     implementation 'com.github.QuadFlask:colorpicker:0.0.15'
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation("com.vanniktech:android-image-cropper:4.5.0")

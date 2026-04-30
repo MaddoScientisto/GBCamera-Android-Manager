@@ -26,6 +26,8 @@ public class GBxCartConstants {
         put("SET_MODE_DMG", 0xA3);
         put("SET_VOLTAGE_3_3V", 0xA4);
         put("SET_VOLTAGE_5V", 0xA5);
+        put("CART_PWR_ON", 0xF2);
+        put("CART_PWR_OFF", 0xF3);
         put("SET_VARIABLE", 0xA6);
         put("SET_FLASH_CMD", 0xA7);
         put("SET_ADDR_AS_INPUTS", 0xA8);

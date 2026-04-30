@@ -1,0 +1,252 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 5,
+    "identityHash": "dfa5eed4237453f12e3f0d7ddc31621f",
+    "entities": [
+      {
+        "tableName": "GbcImage",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`hashCode` TEXT NOT NULL, `image_name` TEXT, `palette_id` TEXT, `frame_palette_id` TEXT, `lock_frame` INTEGER NOT NULL, `invert_palette` INTEGER NOT NULL, `image_metadata` TEXT, `invert_frame_palette` INTEGER NOT NULL DEFAULT false, `frame_id` TEXT, `creation_date` TEXT, `tags_list` TEXT, `rotation` INTEGER NOT NULL DEFAULT 0, `imageBytes` BLOB, PRIMARY KEY(`hashCode`))",
+        "fields": [
+          {
+            "fieldPath": "hashCode",
+            "columnName": "hashCode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "image_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "paletteId",
+            "columnName": "palette_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "framePaletteId",
+            "columnName": "frame_palette_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lockFrame",
+            "columnName": "lock_frame",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "invertPalette",
+            "columnName": "invert_palette",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageMetadata",
+            "columnName": "image_metadata",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "invertFramePalette",
+            "columnName": "invert_frame_palette",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "false"
+          },
+          {
+            "fieldPath": "frameId",
+            "columnName": "frame_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "creationDate",
+            "columnName": "creation_date",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "tags",
+            "columnName": "tags_list",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "rotation",
+            "columnName": "rotation",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "imageBytes",
+            "columnName": "imageBytes",
+            "affinity": "BLOB",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "hashCode"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "GbcPalette",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`paletteId` TEXT NOT NULL, `palette_name` TEXT, `palette_colors` TEXT, `is_favorite` INTEGER NOT NULL DEFAULT false, PRIMARY KEY(`paletteId`))",
+        "fields": [
+          {
+            "fieldPath": "paletteId",
+            "columnName": "paletteId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paletteName",
+            "columnName": "palette_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "paletteColors",
+            "columnName": "palette_colors",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isFavorite",
+            "columnName": "is_favorite",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "false"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "paletteId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "GbcFrame",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`frame_id` TEXT NOT NULL, `frame_name` TEXT, `frame_hash` TEXT, `frame_bitmap` BLOB, `wild_frame` INTEGER NOT NULL DEFAULT false, `frame_groups_names` TEXT, PRIMARY KEY(`frame_id`))",
+        "fields": [
+          {
+            "fieldPath": "frameId",
+            "columnName": "frame_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "frameName",
+            "columnName": "frame_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "frameHash",
+            "columnName": "frame_hash",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "frameBitmap",
+            "columnName": "frame_bitmap",
+            "affinity": "BLOB",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isWildFrame",
+            "columnName": "wild_frame",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "false"
+          },
+          {
+            "fieldPath": "frameGroupsNames",
+            "columnName": "frame_groups_names",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "frame_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "image_data",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `image_id` TEXT NOT NULL, `data` BLOB, FOREIGN KEY(`image_id`) REFERENCES `GbcImage`(`hashCode`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageId",
+            "columnName": "image_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "data",
+            "columnName": "data",
+            "affinity": "BLOB",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_image_data_image_id",
+            "unique": false,
+            "columnNames": [
+              "image_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_image_data_image_id` ON `${TABLE_NAME}` (`image_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "GbcImage",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "image_id"
+            ],
+            "referencedColumns": [
+              "hashCode"
+            ]
+          }
+        ]
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'dfa5eed4237453f12e3f0d7ddc31621f')"
+    ]
+  }
+}

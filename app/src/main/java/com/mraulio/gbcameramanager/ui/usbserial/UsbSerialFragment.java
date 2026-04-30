@@ -459,6 +459,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         } catch (Exception e) {
             e.printStackTrace();
         }
+        GBxCartCommands.readFirmwareInfo(port);
         completeReadRomName();
     }
 
