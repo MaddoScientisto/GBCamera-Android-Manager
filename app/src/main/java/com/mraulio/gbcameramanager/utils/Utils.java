@@ -15,17 +15,21 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ComponentName;
+import android.content.ContentUris;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.provider.MediaStore;
+import android.provider.Settings;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -46,9 +50,12 @@ import com.mraulio.gbcameramanager.model.GbcImage;
 import com.mraulio.gbcameramanager.model.GbcPalette;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.channels.FileChannel;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -293,6 +300,10 @@ public class Utils {
     }
 
     public static void backupDatabase(Context context) {
+        if (!ensureLegacyStorageAccess(context)) {
+            return;
+        }
+
         try {
             //Get the database version first.
             int databaseVersion = StaticValues.db.getOpenHelper().getReadableDatabase().getVersion();
@@ -339,6 +350,9 @@ public class Utils {
     }
 
     public static void showDbBackups(Context context, Activity activity) {
+        if (!ensureLegacyStorageAccess(context)) {
+            return;
+        }
 
         //Show only the database backups with version equal to actual version
         int databaseVersion = StaticValues.db.getOpenHelper().getReadableDatabase().getVersion();
@@ -424,23 +438,9 @@ public class Utils {
             File currentDB_wal = new File(dataDir, "/data/" + context.getPackageName() + "/databases/" + DB_NAME_WAL);
             File backupDB_wal = new File(backupDir, DB_NAME_WAL);
 
-            FileChannel src = new FileInputStream(backupDB).getChannel();
-            FileChannel dst = new FileOutputStream(currentDB).getChannel();
-            dst.transferFrom(src, 0, src.size());
-            src.close();
-            dst.close();
-
-            src = new FileInputStream(backupDB_shm).getChannel();
-            dst = new FileOutputStream(currentDB_shm).getChannel();
-            dst.transferFrom(src, 0, src.size());
-            src.close();
-            dst.close();
-
-            src = new FileInputStream(backupDB_wal).getChannel();
-            dst = new FileOutputStream(currentDB_wal).getChannel();
-            dst.transferFrom(src, 0, src.size());
-            src.close();
-            dst.close();
+            copyBackupFile(context, backupDB, currentDB);
+            copyBackupFile(context, backupDB_shm, currentDB_shm);
+            copyBackupFile(context, backupDB_wal, currentDB_wal);
 
             //Clear shared preferences and cache
             SharedPreferences.Editor editor = sharedPreferences.edit();
@@ -453,6 +453,96 @@ public class Utils {
             e.printStackTrace();
             toast(context, "Error restoring DB backup");
         }
+    }
+
+    private static void copyBackupFile(Context context, File backupFile, File destinationFile) throws IOException {
+        try (InputStream inputStream = openBackupInputStream(context, backupFile);
+             OutputStream outputStream = new FileOutputStream(destinationFile)) {
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+            }
+            outputStream.flush();
+        }
+    }
+
+    private static InputStream openBackupInputStream(Context context, File backupFile) throws IOException {
+        try {
+            return new FileInputStream(backupFile);
+        } catch (FileNotFoundException exception) {
+            Uri mediaStoreUri = getMediaStoreUriForBackupFile(context, backupFile);
+            if (mediaStoreUri == null) {
+                throw exception;
+            }
+
+            InputStream inputStream = context.getContentResolver().openInputStream(mediaStoreUri);
+            if (inputStream == null) {
+                throw exception;
+            }
+            return inputStream;
+        }
+    }
+
+    private static Uri getMediaStoreUriForBackupFile(Context context, File backupFile) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return null;
+        }
+
+        String relativePath = getRelativeMediaStorePath(backupFile);
+        if (relativePath == null) {
+            return null;
+        }
+
+        Uri collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+        String[] projection = new String[]{MediaStore.Files.FileColumns._ID};
+        String selection = MediaStore.Files.FileColumns.RELATIVE_PATH + "=? AND "
+                + MediaStore.Files.FileColumns.DISPLAY_NAME + "=?";
+        String[] selectionArgs = new String[]{relativePath, backupFile.getName()};
+
+        try (Cursor cursor = context.getContentResolver().query(collection, projection, selection, selectionArgs, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                long id = cursor.getLong(0);
+                return ContentUris.withAppendedId(collection, id);
+            }
+        }
+
+        return null;
+    }
+
+    private static String getRelativeMediaStorePath(File backupFile) {
+        File externalStorageDirectory = Environment.getExternalStorageDirectory();
+        File parentDirectory = backupFile.getParentFile();
+        if (parentDirectory == null) {
+            return null;
+        }
+
+        String rootPath = externalStorageDirectory.getAbsolutePath();
+        String parentPath = parentDirectory.getAbsolutePath();
+        if (!parentPath.startsWith(rootPath + File.separator)) {
+            return null;
+        }
+
+        return parentPath.substring(rootPath.length() + 1).replace(File.separatorChar, '/') + "/";
+    }
+
+    private static boolean ensureLegacyStorageAccess(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+            return true;
+        }
+
+        Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+        intent.setData(Uri.parse("package:" + context.getPackageName()));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        if (intent.resolveActivity(context.getPackageManager()) == null) {
+            intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        }
+
+        context.startActivity(intent);
+        toast(context, context.getString(R.string.toast_manage_storage_db));
+        return false;
     }
 
     public static void deleteImageCache(Context context) {
