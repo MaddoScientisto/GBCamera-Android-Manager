@@ -273,7 +273,7 @@ public class MainActivity extends AppCompatActivity {
                     new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},
                     1);
         }
-        if (SDK_INT == Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+        if (SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
             // Permission is not granted
             // Ask for permission
