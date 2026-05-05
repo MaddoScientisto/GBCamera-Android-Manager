@@ -57,6 +57,30 @@ jobs:
           echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare signing config
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [[ -n "$ANDROID_KEYSTORE_BASE64" && -n "$ANDROID_KEYSTORE_PASSWORD" && -n "$ANDROID_KEY_ALIAS" && -n "$ANDROID_KEY_PASSWORD" ]]; then
+            signing_dir="$RUNNER_TEMP/android-signing"
+            mkdir -p "$signing_dir"
+            keystore_path="$signing_dir/release.keystore"
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+
+            {
+              echo "ANDROID_RELEASE_STORE_FILE=$keystore_path"
+              echo "ANDROID_RELEASE_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
+              echo "ANDROID_RELEASE_KEY_ALIAS=$ANDROID_KEY_ALIAS"
+              echo "ANDROID_RELEASE_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+          else
+            echo "Release signing secrets not configured; Gradle will fall back to debug signing."
+          fi
+
       - name: Build release APK
         run: ./gradlew assembleRelease -PreleaseVersionName=${{ steps.release_meta.outputs.release_version }}
 
