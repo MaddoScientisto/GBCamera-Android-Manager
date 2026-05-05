@@ -1025,17 +1025,16 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
                                 if (lhm != null) { //Last seen images don't have metadata
                                     for (Object key : lhm.keySet()) {
                                         if (key.equals("frameIndex")) continue;
-                                        String value = (String) lhm.get(key);
-                                        if (key.equals("isCopy") || key.equals("cpuFast")) {
-                                            try {
-                                                boolean booleanParam = Boolean.parseBoolean(value);
-                                                metaObject.put((String) key, booleanParam);
-
-                                            } catch (Exception e) {
-                                                e.printStackTrace();
-                                            }
+                                        Object value = lhm.get(key);
+                                        if (value == null) {
+                                            continue;
+                                        }
+                                        if (value instanceof Boolean) {
+                                            metaObject.put((String) key, (Boolean) value);
+                                        } else if (key.equals("isCopy") || key.equals("cpuFast")) {
+                                            metaObject.put((String) key, Boolean.parseBoolean(String.valueOf(value)));
                                         } else {
-                                            metaObject.put((String) key, value);
+                                            metaObject.put((String) key, String.valueOf(value));
                                         }
                                     }
                                 }
@@ -1065,17 +1064,22 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
 
                             String fileName = "imagesJson" + dateFormat.format(new Date()) + ".json";
 
+                            if (!Utils.IMAGES_JSON.exists()) {
+                                Utils.IMAGES_JSON.mkdirs();
+                            }
                             File file = new File(Utils.IMAGES_JSON, fileName);
 
                             try (FileWriter fileWriter = new FileWriter(file)) {
                                 fileWriter.write(jsonString);
-                                Utils.toast(getContext(), getString(R.string.json_backup_saved));
+                                Utils.toast(getContext(), getString(R.string.json_backup_saved) + "\n" + file.getAbsolutePath());
                                 showNotification(getContext(), file);
                             } catch (IOException e) {
                                 e.printStackTrace();
+                                Utils.toast(getContext(), getString(R.string.json_backup_failed) + "\n" + e.getMessage());
                             }
                         } catch (Exception e) {
                             e.printStackTrace();
+                            Utils.toast(getContext(), getString(R.string.json_backup_failed) + "\n" + e.getMessage());
                         }
                         loadDialog.dismissDialog();
 

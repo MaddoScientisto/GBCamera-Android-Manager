@@ -166,6 +166,7 @@
     <string name="delete_all_title">Delete selected images?</string>
     <string name="no_selected">No images selected</string>
     <string name="json_backup_saved">JSON Backup saved!</string>
+    <string name="json_backup_failed">JSON Backup failed</string>
     <string name="page_selector_dialog">Select page</string>
     <string name="sizes_exception">All images must have the same size.</string>
     <string name="save_location_hint">PNGs, HDRs and GIFs are saved into \n\u0020 Pictures/GBCamera Manager. \nOther files are stored in \n\u0020 Download/GBCamera Manager.</string>
@@ -233,6 +234,7 @@
     <string name="btn_restore_db">Restore Database</string>
     <string name="toast_backup_db">Database backup finished</string>
     <string name="toast_restore_db">Database restore finished</string>
+    <string name="toast_manage_storage_db">Allow access to all files so database backups in Downloads can be restored.</string>
     <string name="dialog_restore_db_title">Select database to restore</string>
     <string name="dialog_confirm_restore_db">Restoring a database will reset all settings.\nMaking a database backup and Json exports is recommended.\nApp will reset.\nAre you sure? </string>
     <string name="as_imported_frame">As imported</string>
