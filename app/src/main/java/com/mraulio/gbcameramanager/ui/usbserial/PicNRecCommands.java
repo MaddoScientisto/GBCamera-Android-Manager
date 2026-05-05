@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.os.AsyncTask;
 import android.view.View;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.hoho.android.usbserial.driver.UsbSerialPort;
@@ -21,6 +22,8 @@ import java.util.Arrays;
 
 public class PicNRecCommands {
     public static final int DEFAULT_BAUD_RATE = 1000000;
+    public static final int FIRST_IMAGE_SLOT = 1;
+    public static final int MAX_SUPPORTED_IMAGE_INDEX = 18720;
     private static final int BLOCK_SIZE = 64;
     private static final int IMAGE_SIZE = 0x0E00;
     private static final int IMAGE_BLOCK_COUNT = IMAGE_SIZE / BLOCK_SIZE;
@@ -29,7 +32,6 @@ public class PicNRecCommands {
     private static final int BLOCK_TIMEOUT_MS = 500;
     private static final int RETRY_COUNT = 3;
     private static final int RETRY_DELAY_MS = 200;
-    private static final int MAX_SUPPORTED_IMAGE_INDEX = 18720;
     private static final byte[] BLACK_TILE = new byte[16];
 
     static {
@@ -103,7 +105,11 @@ public class PicNRecCommands {
         return output;
     }
 
-    private static int readLastImageNumber(UsbSerialPort port) throws Exception {
+    public static int getEffectiveLastImageIndex(int reportedLastImageNumber) {
+        return Math.min(Math.max(0, reportedLastImageNumber - 1), MAX_SUPPORTED_IMAGE_INDEX);
+    }
+
+    public static int readReportedLastImageNumber(UsbSerialPort port) throws Exception {
         ensureIdle(port);
         flushInput(port);
         setNumber(port, 0);
@@ -124,10 +130,14 @@ public class PicNRecCommands {
             else if (value == 0x3F) lastAddress += 2;
             else if (value == 0x7F) lastAddress += 1;
         }
-        return Math.min(Math.max(0, lastAddress - 1), MAX_SUPPORTED_IMAGE_INDEX);
+        return Math.min(Math.max(0, lastAddress), MAX_SUPPORTED_IMAGE_INDEX + 1);
     }
 
-    private static byte[] readImage(UsbSerialPort port, int imageNumber) throws Exception {
+    public static int readLastImageNumber(UsbSerialPort port) throws Exception {
+        return getEffectiveLastImageIndex(readReportedLastImageNumber(port));
+    }
+
+    public static byte[] readImage(UsbSerialPort port, int imageNumber) throws Exception {
         Exception lastException = null;
         for (int attempt = 1; attempt <= RETRY_COUNT; attempt++) {
             try {
@@ -185,6 +195,12 @@ public class PicNRecCommands {
         return outputStream.toByteArray();
     }
 
+    public static Bitmap decodePicNRecImage(Context context, byte[] imageBytes) throws Exception {
+        byte[] fullImageBytes = padToFullCameraImage(imageBytes);
+        ImageCodec imageCodec = new ImageCodec(160, 144);
+        return imageCodec.decodeWithPalette(Utils.hashPalettes.get(new GbcImage().getPaletteId()).getPaletteColorsInt(), fullImageBytes, false);
+    }
+
     private static void addImage(Context context, byte[] imageBytes, int imageNumber) throws Exception {
         byte[] fullImageBytes = padToFullCameraImage(imageBytes);
         GbcImage gbcImage = new GbcImage();
@@ -204,16 +220,107 @@ public class PicNRecCommands {
         UsbSerialFragment.finalListBitmaps.add(bitmap);
     }
 
+    public interface DeviceInfoListener {
+        void onDeviceInfo(int reportedLastImageNumber);
+        void onDeviceInfoError(Exception exception);
+    }
+
+    public static class DetectPicNRecAsyncTask extends AsyncTask<Void, Void, Exception> {
+        private final UsbSerialPort port;
+        private final DeviceInfoListener listener;
+        private int reportedLastImageNumber;
+
+        public DetectPicNRecAsyncTask(UsbSerialPort port, DeviceInfoListener listener) {
+            this.port = port;
+            this.listener = listener;
+        }
+
+        @Override
+        protected Exception doInBackground(Void... voids) {
+            try {
+                if (port == null) {
+                    throw new IllegalStateException("No USB serial device found");
+                }
+                reportedLastImageNumber = readReportedLastImageNumber(port);
+            } catch (Exception e) {
+                return e;
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Exception exception) {
+            if (exception != null) {
+                listener.onDeviceInfoError(exception);
+                return;
+            }
+            listener.onDeviceInfo(reportedLastImageNumber);
+        }
+    }
+
+    public static class PreviewPicNRecAsyncTask extends AsyncTask<Void, Void, Exception> {
+        private final UsbSerialPort port;
+        private final Context context;
+        private final int imageNumber;
+        private final ImageView imageView;
+        private final TextView statusView;
+        private Bitmap bitmap;
+
+        public PreviewPicNRecAsyncTask(UsbSerialPort port, Context context, int imageNumber, ImageView imageView, TextView statusView) {
+            this.port = port;
+            this.context = context;
+            this.imageNumber = imageNumber;
+            this.imageView = imageView;
+            this.statusView = statusView;
+        }
+
+        @Override
+        protected void onPreExecute() {
+            statusView.setText(context.getString(R.string.picnrec_previewing) + imageNumber + "...");
+        }
+
+        @Override
+        protected Exception doInBackground(Void... voids) {
+            try {
+                if (port == null) {
+                    throw new IllegalStateException("No USB serial device found");
+                }
+                bitmap = decodePicNRecImage(context, readImage(port, imageNumber));
+            } catch (Exception e) {
+                return e;
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Exception exception) {
+            if (exception != null) {
+                statusView.setText(context.getString(R.string.picnrec_preview_failed) + exception.toString());
+                return;
+            }
+            imageView.setImageBitmap(bitmap);
+            statusView.setText(context.getString(R.string.picnrec_preview_loaded) + imageNumber + ".");
+        }
+    }
+
     public static class ReadPicNRecAsyncTask extends AsyncTask<Void, Integer, Exception> {
         private final UsbSerialPort port;
         private final Context context;
         private final TextView tv;
+        private final int startImageNumber;
+        private final int endImageNumber;
         private int lastImageNumber;
 
         public ReadPicNRecAsyncTask(UsbSerialPort port, Context context, TextView tv) {
+            this(port, context, tv, FIRST_IMAGE_SLOT, 0);
+        }
+
+        public ReadPicNRecAsyncTask(UsbSerialPort port, Context context, TextView tv, int startImageNumber, int endImageNumber) {
             this.port = port;
             this.context = context;
             this.tv = tv;
+            this.startImageNumber = startImageNumber;
+            this.endImageNumber = endImageNumber;
         }
 
         @Override
@@ -223,21 +330,23 @@ public class PicNRecCommands {
                     throw new IllegalStateException("No USB serial device found");
                 }
 
-                publishProgress(0, 0);
-                lastImageNumber = readLastImageNumber(port);
+                publishProgress(0, 0, 0);
+                lastImageNumber = endImageNumber > 0 ? endImageNumber : readLastImageNumber(port);
                 publishProgress(0, 1);
 
                 UsbSerialFragment.finalListImages.clear();
                 UsbSerialFragment.finalListBitmaps.clear();
                 UsbSerialFragment.latestFile = null;
 
-                for (int imageNumber = 1; imageNumber <= lastImageNumber; imageNumber++) {
+                int startImage = Math.max(FIRST_IMAGE_SLOT, startImageNumber);
+                int totalImages = lastImageNumber - startImage + 1;
+                for (int imageNumber = startImage; imageNumber <= lastImageNumber; imageNumber++) {
                     byte[] image = readImage(port, imageNumber);
                     if (isImportableImage(image)) {
                         addImage(context, image, imageNumber);
                     }
-                    int progress = lastImageNumber == 0 ? 100 : imageNumber * 100 / lastImageNumber;
-                    publishProgress(progress, 2);
+                    int progress = totalImages <= 0 ? 100 : (imageNumber - startImage + 1) * 100 / totalImages;
+                    publishProgress(progress, 2, imageNumber);
                 }
                 ensureIdle(port);
             } catch (Exception e) {
@@ -253,9 +362,9 @@ public class PicNRecCommands {
             if (state == 0) {
                 tv.setText(context.getString(R.string.picnrec_detecting));
             } else if (state == 1) {
-                tv.setText(context.getString(R.string.picnrec_found) + lastImageNumber + "\n" + context.getString(R.string.picnrec_reading));
+                tv.setText(context.getString(R.string.picnrec_importing_range, Math.max(FIRST_IMAGE_SLOT, startImageNumber), lastImageNumber));
             } else {
-                tv.setText(context.getString(R.string.picnrec_found) + lastImageNumber + "\n" + context.getString(R.string.picnrec_reading) + "\n" + progress + "%");
+                tv.setText(context.getString(R.string.picnrec_importing_range, Math.max(FIRST_IMAGE_SLOT, startImageNumber), lastImageNumber) + "\n" + progress + "%");
             }
         }
 

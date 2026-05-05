@@ -37,10 +37,13 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.GridView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -94,6 +97,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     private static final String ACTION_USB_PERMISSION = "com.android.example.USB_PERMISSION";
     boolean isRomExtracted;
     public static LinearLayout layoutCb;
+    public static LinearLayout layoutPicNRecControls;
     public static CheckBox cbLastSeen;
     public static CheckBox cbDeleted;
     static GridView gridView;
@@ -104,6 +108,11 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
 
     TextView tvMode;
     public static Button btnSave, btnReadRomName, btnReadRam, btnFullRom, btnPrintBanner, btnAddImages, btnDelSav, btnDecode, btnDelete, btnReadPicNRec;
+    Button btnPicNRecStartFirst, btnPicNRecStartCurrent, btnPicNRecEndCurrent, btnPicNRecEndLast, btnPicNRecPreviewMinus, btnPicNRecPreviewPlus, btnPicNRecPreviewLast, btnPicNRecPreviewMinusTen, btnPicNRecPreviewPlusTen, btnPicNRecPreviewFirst;
+    EditText etPicNRecStart, etPicNRecEnd;
+    ImageView ivPicNRecPreview;
+    SeekBar sbPicNRecPreview;
+    TextView tvPicNRecDeviceInfo, tvPicNRecPreviewStatus;
     RadioButton rbGbx, rbApe, rbPicNRec;
     public static RadioButton rbPrint;
     RadioGroup rbGroup;
@@ -125,6 +134,9 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     static LinkedHashMap<GbcImage, Bitmap> importedImagesHashUsb = new LinkedHashMap<>();
     boolean isPhotoSave = false;
     List saveTypes = new ArrayList();
+    private int picNRecReportedLastImageNumber = 0;
+    private int picNRecEffectiveLastImageIndex = 0;
+    private int picNRecPreviewImageNumber = PicNRecCommands.FIRST_IMAGE_SLOT;
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
@@ -141,6 +153,23 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         cbLastSeen = view.findViewById(R.id.cbLastSeen);
         cbDeleted = view.findViewById(R.id.cbDeletedImages);
         layoutCb = view.findViewById(R.id.layout_cb);
+        layoutPicNRecControls = view.findViewById(R.id.layoutPicNRecControls);
+        tvPicNRecDeviceInfo = view.findViewById(R.id.tvPicNRecDeviceInfo);
+        tvPicNRecPreviewStatus = view.findViewById(R.id.tvPicNRecPreviewStatus);
+        etPicNRecStart = view.findViewById(R.id.etPicNRecStart);
+        etPicNRecEnd = view.findViewById(R.id.etPicNRecEnd);
+        sbPicNRecPreview = view.findViewById(R.id.sbPicNRecPreview);
+        ivPicNRecPreview = view.findViewById(R.id.ivPicNRecPreview);
+        btnPicNRecStartFirst = view.findViewById(R.id.btnPicNRecStartFirst);
+        btnPicNRecStartCurrent = view.findViewById(R.id.btnPicNRecStartCurrent);
+        btnPicNRecEndCurrent = view.findViewById(R.id.btnPicNRecEndCurrent);
+        btnPicNRecEndLast = view.findViewById(R.id.btnPicNRecEndLast);
+        btnPicNRecPreviewMinus = view.findViewById(R.id.btnPicNRecPreviewMinus);
+        btnPicNRecPreviewPlus = view.findViewById(R.id.btnPicNRecPreviewPlus);
+        btnPicNRecPreviewLast = view.findViewById(R.id.btnPicNRecPreviewLast);
+        btnPicNRecPreviewMinusTen = view.findViewById(R.id.btnPicNRecPreviewMinusTen);
+        btnPicNRecPreviewPlusTen = view.findViewById(R.id.btnPicNRecPreviewPlusTen);
+        btnPicNRecPreviewFirst = view.findViewById(R.id.btnPicNRecPreviewFirst);
         spSaveType = view.findViewById(R.id.sp_save_type_usb);
 
         saveTypes.add("International");
@@ -392,6 +421,11 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
                 if (port == null || !port.isOpen()) {
                     connectPicNRecSerial();
                 }
+                String rangeError = getPicNRecRangeError();
+                if (!rangeError.isEmpty()) {
+                    tv.setText(getString(R.string.picnrec_range_invalid) + rangeError);
+                    return;
+                }
                 btnAddImages.setVisibility(View.GONE);
                 listActiveImages.clear();
                 listActiveBitmaps.clear();
@@ -400,7 +434,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
                 listDeletedBitmapsRedStroke.clear();
                 finalListImages.clear();
                 finalListBitmaps.clear();
-                new PicNRecCommands.ReadPicNRecAsyncTask(port, getContext(), tv).execute();
+                new PicNRecCommands.ReadPicNRecAsyncTask(port, getContext(), tv, parsePicNRecNumber(etPicNRecStart), parsePicNRecNumber(etPicNRecEnd)).execute();
             } catch (Exception e) {
                 tv.setText(getString(R.string.picnrec_error) + e.toString());
                 Toast toast = Toast.makeText(getContext(), getString(R.string.picnrec_error) + e.toString(), Toast.LENGTH_LONG);
@@ -412,12 +446,43 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         rbPrint.setOnClickListener(v -> printOverArduinoMode());
         rbGbx.setOnClickListener(v -> gbxMode());
         rbPicNRec.setOnClickListener(v -> picNRecMode());
+
+        btnPicNRecStartFirst.setOnClickListener(v -> etPicNRecStart.setText(String.valueOf(PicNRecCommands.FIRST_IMAGE_SLOT)));
+        btnPicNRecStartCurrent.setOnClickListener(v -> etPicNRecStart.setText(String.valueOf(picNRecPreviewImageNumber)));
+        btnPicNRecEndCurrent.setOnClickListener(v -> etPicNRecEnd.setText(String.valueOf(picNRecPreviewImageNumber)));
+        btnPicNRecEndLast.setOnClickListener(v -> etPicNRecEnd.setText(String.valueOf(getPicNRecUiLastImageNumber())));
+        btnPicNRecPreviewMinus.setOnClickListener(v -> setPicNRecPreviewImageNumber(picNRecPreviewImageNumber - 1, true));
+        btnPicNRecPreviewPlus.setOnClickListener(v -> setPicNRecPreviewImageNumber(picNRecPreviewImageNumber + 1, true));
+        btnPicNRecPreviewLast.setOnClickListener(v -> setPicNRecPreviewImageNumber(getPicNRecUiLastImageNumber(), true));
+        btnPicNRecPreviewMinusTen.setOnClickListener(v -> setPicNRecPreviewImageNumber(picNRecPreviewImageNumber - 10, true));
+        btnPicNRecPreviewPlusTen.setOnClickListener(v -> setPicNRecPreviewImageNumber(picNRecPreviewImageNumber + 10, true));
+        btnPicNRecPreviewFirst.setOnClickListener(v -> setPicNRecPreviewImageNumber(PicNRecCommands.FIRST_IMAGE_SLOT, true));
+        sbPicNRecPreview.setMax(PicNRecCommands.MAX_SUPPORTED_IMAGE_INDEX - PicNRecCommands.FIRST_IMAGE_SLOT);
+        sbPicNRecPreview.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) {
+                    setPicNRecPreviewImageNumber(PicNRecCommands.FIRST_IMAGE_SLOT + progress, false);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                setPicNRecPreviewImageNumber(PicNRecCommands.FIRST_IMAGE_SLOT + seekBar.getProgress(), true);
+            }
+        });
         return view;
     }
 
     public void arduinoPrinterMode() {
         try {
             gbxMode = false;
+            hidePicNRecControls();
             tvMode.setVisibility(View.VISIBLE);
             tvMode.setText(getString(R.string.arduino_mode));
             rbGroup.setVisibility(View.GONE);
@@ -443,6 +508,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             StaticValues.printingEnabled = true;
             gbxMode = false;
             ape = false;
+            hidePicNRecControls();
             tvMode.setVisibility(View.VISIBLE);
             tvMode.setText(getString(R.string.print_mode));
             rbGroup.setVisibility(View.GONE);
@@ -462,6 +528,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     private void gbxMode() {
         gbxMode = true;
         ape = false;
+        hidePicNRecControls();
         tvMode.setText(getString(R.string.gbxcart_mode));
         tvMode.setVisibility(View.VISIBLE);
         rbGroup.setVisibility(View.GONE);
@@ -497,6 +564,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         tvMode.setVisibility(View.VISIBLE);
         rbGroup.setVisibility(View.GONE);
         btnReadPicNRec.setVisibility(View.VISIBLE);
+        layoutPicNRecControls.setVisibility(View.VISIBLE);
         btnReadRam.setVisibility(View.GONE);
         btnReadRomName.setVisibility(View.GONE);
         btnFullRom.setVisibility(View.GONE);
@@ -506,6 +574,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         layoutCb.setVisibility(View.GONE);
         try {
             connectPicNRecSerial();
+            detectPicNRecDevice();
         } catch (Exception e) {
             Toast toast = Toast.makeText(getContext(), getString(R.string.picnrec_error) + e.toString(), Toast.LENGTH_LONG);
             toast.show();
@@ -530,6 +599,110 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             tv.append(getString(R.string.tv_connected));
         } catch (Exception e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    private void hidePicNRecControls() {
+        if (layoutPicNRecControls != null) {
+            layoutPicNRecControls.setVisibility(View.GONE);
+        }
+        if (btnReadPicNRec != null) {
+            btnReadPicNRec.setVisibility(View.GONE);
+        }
+    }
+
+    private void detectPicNRecDevice() {
+        tv.setText(getString(R.string.picnrec_detecting));
+        new PicNRecCommands.DetectPicNRecAsyncTask(port, new PicNRecCommands.DeviceInfoListener() {
+            @Override
+            public void onDeviceInfo(int reportedLastImageNumber) {
+                picNRecReportedLastImageNumber = reportedLastImageNumber;
+                picNRecEffectiveLastImageIndex = PicNRecCommands.getEffectiveLastImageIndex(reportedLastImageNumber);
+                int defaultSlot = getPicNRecUiLastImageNumber();
+                tv.setText("");
+                tvPicNRecDeviceInfo.setText(getString(R.string.picnrec_device_info, defaultSlot, PicNRecCommands.MAX_SUPPORTED_IMAGE_INDEX));
+                etPicNRecStart.setText(String.valueOf(PicNRecCommands.FIRST_IMAGE_SLOT));
+                etPicNRecEnd.setText(String.valueOf(defaultSlot));
+                setPicNRecPreviewImageNumber(defaultSlot, true);
+            }
+
+            @Override
+            public void onDeviceInfoError(Exception exception) {
+                tv.setText(getString(R.string.picnrec_error) + exception.toString());
+            }
+        }).execute();
+    }
+
+    private int parsePicNRecNumber(EditText editText) throws NumberFormatException {
+        return Integer.parseInt(editText.getText().toString().trim());
+    }
+
+    private int getPicNRecUiLastImageNumber() {
+        if (picNRecEffectiveLastImageIndex <= PicNRecCommands.FIRST_IMAGE_SLOT) {
+            return PicNRecCommands.FIRST_IMAGE_SLOT;
+        }
+        return Math.max(PicNRecCommands.FIRST_IMAGE_SLOT, picNRecEffectiveLastImageIndex - 1);
+    }
+
+    private String getPicNRecRangeError() {
+        int startImageNumber;
+        int endImageNumber;
+        try {
+            startImageNumber = parsePicNRecNumber(etPicNRecStart);
+            endImageNumber = parsePicNRecNumber(etPicNRecEnd);
+        } catch (NumberFormatException e) {
+            return getString(R.string.picnrec_range_whole_numbers);
+        }
+
+        if (startImageNumber < PicNRecCommands.FIRST_IMAGE_SLOT || startImageNumber > PicNRecCommands.MAX_SUPPORTED_IMAGE_INDEX) {
+            return getString(R.string.picnrec_range_start_bounds);
+        }
+
+        if (endImageNumber < startImageNumber || endImageNumber > PicNRecCommands.MAX_SUPPORTED_IMAGE_INDEX) {
+            return getString(R.string.picnrec_range_end_bounds);
+        }
+
+        if (picNRecReportedLastImageNumber >= PicNRecCommands.FIRST_IMAGE_SLOT
+                && picNRecReportedLastImageNumber <= PicNRecCommands.MAX_SUPPORTED_IMAGE_INDEX
+                && startImageNumber <= picNRecReportedLastImageNumber
+                && endImageNumber >= picNRecReportedLastImageNumber) {
+            return getString(R.string.picnrec_range_incomplete_slot) + " " + picNRecReportedLastImageNumber;
+        }
+
+        return "";
+    }
+
+    private void setPicNRecPreviewImageNumber(int imageNumber, boolean loadPreview) {
+        int safeImageNumber = Math.min(Math.max(PicNRecCommands.FIRST_IMAGE_SLOT, imageNumber), PicNRecCommands.MAX_SUPPORTED_IMAGE_INDEX);
+        if (safeImageNumber == picNRecReportedLastImageNumber) {
+            if (imageNumber > picNRecPreviewImageNumber && safeImageNumber < PicNRecCommands.MAX_SUPPORTED_IMAGE_INDEX) {
+                safeImageNumber++;
+            } else if (safeImageNumber > PicNRecCommands.FIRST_IMAGE_SLOT) {
+                safeImageNumber--;
+            } else {
+                safeImageNumber++;
+            }
+        }
+        picNRecPreviewImageNumber = safeImageNumber;
+        sbPicNRecPreview.setProgress(picNRecPreviewImageNumber - PicNRecCommands.FIRST_IMAGE_SLOT);
+        tvPicNRecPreviewStatus.setText(getString(R.string.picnrec_preview_slot) + " " + picNRecPreviewImageNumber);
+        if (loadPreview) {
+            previewPicNRecImage();
+        }
+    }
+
+    private void previewPicNRecImage() {
+        try {
+            if (port == null || !port.isOpen()) {
+                connectPicNRecSerial();
+            }
+            if (picNRecPreviewImageNumber == picNRecReportedLastImageNumber) {
+                tvPicNRecPreviewStatus.setText(getString(R.string.picnrec_range_incomplete_slot) + " " + picNRecReportedLastImageNumber);
+                return;
+            }
+            new PicNRecCommands.PreviewPicNRecAsyncTask(port, getContext(), picNRecPreviewImageNumber, ivPicNRecPreview, tvPicNRecPreviewStatus).execute();
+        } catch (Exception e) {
+            tvPicNRecPreviewStatus.setText(getString(R.string.picnrec_preview_failed) + e.toString());
         }
     }
 
