@@ -8,13 +8,16 @@ import static com.mraulio.gbcameramanager.utils.Utils.saveTypeNames;
 import static com.mraulio.gbcameramanager.utils.Utils.toast;
 
 import android.app.AlertDialog;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
 import android.net.Uri;
@@ -100,8 +103,8 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     static TextView tv;
 
     TextView tvMode;
-    public static Button btnSave, btnReadRomName, btnReadRam, btnFullRom, btnPrintBanner, btnAddImages, btnDelSav, btnDecode, btnDelete;
-    RadioButton rbGbx, rbApe;
+    public static Button btnSave, btnReadRomName, btnReadRam, btnFullRom, btnPrintBanner, btnAddImages, btnDelSav, btnDecode, btnDelete, btnReadPicNRec;
+    RadioButton rbGbx, rbApe, rbPicNRec;
     public static RadioButton rbPrint;
     RadioGroup rbGroup;
     //    public static Switch swIsCartJpUsb;
@@ -165,6 +168,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         btnFullRom = view.findViewById(R.id.btnFullRom);
         btnReadRomName = view.findViewById(R.id.btnReadRom);
         btnReadRam = view.findViewById(R.id.btnReadRam);
+        btnReadPicNRec = view.findViewById(R.id.btnReadPicNRec);
 
         btnPrintBanner = view.findViewById(R.id.btnPrintBanner);
         btnAddImages = view.findViewById(R.id.btnAddImages);
@@ -175,6 +179,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
 
         rbApe = view.findViewById(R.id.rbApe);
         rbGbx = view.findViewById(R.id.rbGbx);
+        rbPicNRec = view.findViewById(R.id.rbPicNRec);
         rbPrint = view.findViewById(R.id.rbPrint);
 
         List<Integer> sizesInteger = new ArrayList<>();
@@ -382,9 +387,31 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             completeRamDump();
         });
 
+        btnReadPicNRec.setOnClickListener(v -> {
+            try {
+                if (port == null || !port.isOpen()) {
+                    connectPicNRecSerial();
+                }
+                btnAddImages.setVisibility(View.GONE);
+                listActiveImages.clear();
+                listActiveBitmaps.clear();
+                listDeletedImages.clear();
+                listDeletedBitmaps.clear();
+                listDeletedBitmapsRedStroke.clear();
+                finalListImages.clear();
+                finalListBitmaps.clear();
+                new PicNRecCommands.ReadPicNRecAsyncTask(port, getContext(), tv).execute();
+            } catch (Exception e) {
+                tv.setText(getString(R.string.picnrec_error) + e.toString());
+                Toast toast = Toast.makeText(getContext(), getString(R.string.picnrec_error) + e.toString(), Toast.LENGTH_LONG);
+                toast.show();
+            }
+        });
+
         rbApe.setOnClickListener(v -> arduinoPrinterMode());
         rbPrint.setOnClickListener(v -> printOverArduinoMode());
         rbGbx.setOnClickListener(v -> gbxMode());
+        rbPicNRec.setOnClickListener(v -> picNRecMode());
         return view;
     }
 
@@ -461,6 +488,49 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         }
         GBxCartCommands.readFirmwareInfo(port);
         completeReadRomName();
+    }
+
+    private void picNRecMode() {
+        gbxMode = false;
+        ape = false;
+        tvMode.setText(getString(R.string.picnrec_mode));
+        tvMode.setVisibility(View.VISIBLE);
+        rbGroup.setVisibility(View.GONE);
+        btnReadPicNRec.setVisibility(View.VISIBLE);
+        btnReadRam.setVisibility(View.GONE);
+        btnReadRomName.setVisibility(View.GONE);
+        btnFullRom.setVisibility(View.GONE);
+        spSaveType.setVisibility(View.GONE);
+        btnAddImages.setVisibility(View.GONE);
+        btnDelSav.setVisibility(View.GONE);
+        layoutCb.setVisibility(View.GONE);
+        try {
+            connectPicNRecSerial();
+        } catch (Exception e) {
+            Toast toast = Toast.makeText(getContext(), getString(R.string.picnrec_error) + e.toString(), Toast.LENGTH_LONG);
+            toast.show();
+        }
+    }
+
+    private void connectPicNRecSerial() {
+        connect();
+        if (port == null) {
+            throw new IllegalStateException("No USB serial device found");
+        }
+        try {
+            usbIoManager.stop();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        try {
+            port.setParameters(PicNRecCommands.DEFAULT_BAUD_RATE, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
+            port.setDTR(true);
+            port.setRTS(true);
+            PicNRecCommands.flushInput(port);
+            tv.append(getString(R.string.tv_connected));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public static boolean readSav(File file, byte[] saveBytes, int saveBank) {
@@ -770,7 +840,20 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         }
         // Open a connection to the first available driver.
         UsbSerialDriver driver = availableDrivers.get(0);
+        UsbDevice device = driver.getDevice();
+        if (!manager.hasPermission(device)) {
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags |= PendingIntent.FLAG_MUTABLE;
+            }
+            PendingIntent permissionIntent = PendingIntent.getBroadcast(getContext(), 0, new Intent(ACTION_USB_PERMISSION), flags);
+            manager.requestPermission(device, permissionIntent);
+            throw new IllegalStateException("USB permission requested. Try again after accepting it.");
+        }
         connection = manager.openDevice(driver.getDevice());
+        if (connection == null) {
+            throw new IllegalArgumentException("Connection is null");
+        }
 
         port = driver.getPorts().get(0); // Most devices have just one port (port 0)
         try {

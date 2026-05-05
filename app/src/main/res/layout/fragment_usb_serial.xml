@@ -50,6 +50,16 @@
 
                 </RadioButton>
 
+                <RadioButton
+                    android:id="@+id/rbPicNRec"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="left"
+                    android:layout_marginHorizontal="10dp"
+                    android:text="@string/rb_picnrec">
+
+                </RadioButton>
+
             </RadioGroup>
         </LinearLayout>
 
@@ -157,6 +167,16 @@
                 android:layout_marginHorizontal="5dp"
                 android:backgroundTint="#804F4F"
                 android:text="@string/btn_dump_photo"
+                android:textSize="15sp"
+                android:visibility="gone"></Button>
+
+            <Button
+                android:id="@+id/btnReadPicNRec"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="5dp"
+                android:backgroundTint="#4EBF52"
+                android:text="@string/btn_read_picnrec"
                 android:textSize="15sp"
                 android:visibility="gone"></Button>
 

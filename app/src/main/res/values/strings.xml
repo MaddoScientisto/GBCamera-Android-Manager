@@ -106,6 +106,15 @@
     <string name="arduino_mode">Arduino Printer Emulator MODE</string>
     <string name="print_mode">PRINT MODE</string>
     <string name="gbxcart_mode">GBxCart Reader MODE</string>
+    <string name="rb_picnrec">PicNRec</string>
+    <string name="picnrec_mode">PicNRec MODE</string>
+    <string name="btn_read_picnrec">Read PicNRec images</string>
+    <string name="picnrec_detecting">Detecting PicNRec...</string>
+    <string name="picnrec_found">PicNRec reports latest usable slot:\u0020</string>
+    <string name="picnrec_reading">Reading PicNRec images...</string>
+    <string name="picnrec_import_ready">PicNRec images ready to add:\u0020</string>
+    <string name="picnrec_no_images">No importable PicNRec images found.</string>
+    <string name="picnrec_error">Error reading PicNRec: </string>
     <string name="images_list">\nImages in the list:\u0020</string>
     <string name="no_good_dump">\nNOT A GOOD SAVE DUMP.</string>
     <string name="sav_parts">\nSav parts:\u0020</string>
