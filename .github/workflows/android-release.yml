@@ -1,0 +1,105 @@
+name: Android APK Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Resolve release metadata
+        id: release_meta
+        shell: bash
+        run: |
+          git fetch --force --tags
+
+          if [[ "$GITHUB_REF_TYPE" == 'tag' ]]; then
+            release_tag="$GITHUB_REF_NAME"
+          else
+            release_tag="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
+
+            if [[ -z "$release_tag" ]]; then
+              echo "No v* tags were found. Manual release requires at least one version tag." >&2
+              exit 1
+            fi
+          fi
+
+          release_version="${release_tag#v}"
+          release_name="GBCamera Manager $release_tag"
+          artifact_name="GBCamera.Manager.$release_tag.apk"
+
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "release_version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease -PreleaseVersionName=${{ steps.release_meta.outputs.release_version }}
+
+      - name: Resolve release APK path
+        id: release_apk
+        shell: bash
+        run: |
+          metadata_path="$(find app/build -path '*/outputs/apk/release/output-metadata.json' | head -n 1)"
+
+          if [[ -z "$metadata_path" ]]; then
+            echo "Could not find release output-metadata.json under app/build." >&2
+            exit 1
+          fi
+
+          apk_file_name="$(python3 -c "import json, sys; print(json.load(open(sys.argv[1], encoding='utf-8'))['elements'][0]['outputFile'])" "$metadata_path")"
+          apk_dir="$(dirname "$metadata_path")"
+          apk_path="$apk_dir/$apk_file_name"
+
+          if [[ ! -f "$apk_path" ]]; then
+            echo "Resolved release APK does not exist: $apk_path" >&2
+            exit 1
+          fi
+
+          echo "apk_path=$apk_path" >> "$GITHUB_OUTPUT"
+
+      - name: Name release APK
+        run: |
+          mkdir -p release-artifacts
+          cp "${{ steps.release_apk.outputs.apk_path }}" "release-artifacts/${{ steps.release_meta.outputs.artifact_name }}"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gbcamera-manager-release-apk
+          path: release-artifacts/${{ steps.release_meta.outputs.artifact_name }}
+
+      - name: Publish GitHub Release
+        if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.release_meta.outputs.release_name }}
+          files: release-artifacts/${{ steps.release_meta.outputs.artifact_name }}
+          generate_release_notes: true
+          overwrite_files: true

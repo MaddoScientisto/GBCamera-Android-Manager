@@ -2,6 +2,11 @@ plugins {
     id 'com.android.application'
 }
 
+def defaultVersionCode = providers.gradleProperty('app.versionCode').get().toInteger()
+def defaultVersionName = providers.gradleProperty('app.versionName').get()
+def releaseVersionName = providers.gradleProperty('releaseVersionName').orElse(defaultVersionName).get()
+def releaseVersionCode = providers.gradleProperty('releaseVersionCode').map { it.toInteger() }.orElse(defaultVersionCode).get()
+
 android {
     namespace 'com.mraulio.gbcameramanager'
     compileSdk 35
@@ -10,8 +15,8 @@ android {
         applicationId "com.mraulio.gbcameramanager"
         minSdk 23
         targetSdk 33
-        versionCode 7
-        versionName "0.70"
+        versionCode releaseVersionCode
+        versionName releaseVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {
@@ -33,6 +38,7 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
     buildFeatures {
+        buildConfig true
         viewBinding true
     }
 }
