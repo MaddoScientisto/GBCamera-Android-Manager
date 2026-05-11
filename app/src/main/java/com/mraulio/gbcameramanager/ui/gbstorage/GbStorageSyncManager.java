@@ -27,6 +27,7 @@ import com.mraulio.gbcameramanager.gameboycameralib.codecs.ImageCodec;
 import com.mraulio.gbcameramanager.model.GbcPalette;
 import com.mraulio.gbcameramanager.model.GbcImage;
 import com.mraulio.gbcameramanager.ui.gallery.GalleryUtils;
+import com.mraulio.gbcameramanager.ui.gallery.GalleryFragment;
 import com.mraulio.gbcameramanager.utils.LoadingDialog;
 import com.mraulio.gbcameramanager.utils.StaticValues;
 import com.mraulio.gbcameramanager.utils.Utils;
@@ -68,6 +69,18 @@ public final class GbStorageSyncManager {
 
     public interface ConnectionResultCallback {
         void onResult(ConnectionResult result);
+    }
+
+    private static final class SyncStatusSummary {
+        final int totalCount;
+        final int syncedCount;
+        final int notSyncedCount;
+
+        SyncStatusSummary(int totalCount, int syncedCount, int notSyncedCount) {
+            this.totalCount = totalCount;
+            this.syncedCount = syncedCount;
+            this.notSyncedCount = notSyncedCount;
+        }
     }
 
     public static final class ConnectionResult {
@@ -269,9 +282,11 @@ public final class GbStorageSyncManager {
                 }
 
                 List<SyncPreviewItem> previewItems = buildPreviewItems(activity, selectedImages, duplicateHashes);
+                applySyncStatusToHashes(selectedImages, duplicateHashes, GbcImage.GB_STORAGE_SYNCED, false);
 
                 MAIN.post(() -> {
                     loadingDialog.dismissDialog();
+                    refreshGallerySyncIndicators();
                     showDuplicateDialog(activity, previewItems, duplicates, StaticValues.gbStorageTimestampSource);
                 });
             } catch (Exception exception) {
@@ -652,10 +667,13 @@ public final class GbStorageSyncManager {
                     MAIN.post(() -> progressDialog.update(processedFinal, totalFinal, status, estimate));
                 }
 
+                markImagesWithStatus(selectedImages, GbcImage.GB_STORAGE_SYNCED);
+
                 int finalImportedTotal = importedTotal;
                 int finalSkippedTotal = skippedTotal;
                 MAIN.post(() -> {
                     progressDialog.dismiss();
+                    refreshGallerySyncIndicators();
                     showMessage(activity, activity.getString(R.string.gbstorage_sync_complete) + "\nImported: " + finalImportedTotal + "\nSkipped: " + finalSkippedTotal);
                 });
             } catch (Exception exception) {
@@ -779,6 +797,121 @@ public final class GbStorageSyncManager {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
         return baseUrl;
+    }
+
+    public static void refreshAllSyncStatuses(Activity activity) {
+        if (StaticValues.db == null) {
+            Utils.toast(activity, activity.getString(R.string.gbstorage_sync_failed));
+            return;
+        }
+        if (TextUtils.isEmpty(StaticValues.gbStorageServerAddress) || TextUtils.isEmpty(StaticValues.gbStorageApiKey)) {
+            Utils.toast(activity, activity.getString(R.string.gbstorage_test_failed));
+            return;
+        }
+
+        List<GbcImage> allImages = Utils.gbcImagesList == null ? Collections.emptyList() : new ArrayList<>(Utils.gbcImagesList);
+        if (allImages.isEmpty()) {
+            showMessage(activity, activity.getString(R.string.no_images));
+            return;
+        }
+
+        LoadingDialog loadingDialog = new LoadingDialog(activity, activity.getString(R.string.gbstorage_refresh_sync_status));
+        loadingDialog.showDialog();
+
+        EXECUTOR.execute(() -> {
+            try {
+                SyncStatusSummary summary = refreshSyncStatusesInternal(allImages);
+                MAIN.post(() -> {
+                    loadingDialog.dismissDialog();
+                    refreshGallerySyncIndicators();
+                    showMessage(activity, activity.getString(R.string.gbstorage_refresh_sync_status_complete, summary.syncedCount, summary.notSyncedCount, summary.totalCount));
+                });
+            } catch (Exception exception) {
+                MAIN.post(() -> {
+                    loadingDialog.dismissDialog();
+                    showMessage(activity, activity.getString(R.string.gbstorage_sync_failed) + "\n" + exception.getMessage());
+                });
+            }
+        });
+    }
+
+    private static SyncStatusSummary refreshSyncStatusesInternal(List<GbcImage> images) throws Exception {
+        Set<String> syncedHashes = queryDuplicateHashes(images);
+        int syncedCount = 0;
+        int notSyncedCount = 0;
+        for (GbcImage image : images) {
+            int status = syncedHashes.contains(image.getHashCode()) ? GbcImage.GB_STORAGE_SYNCED : GbcImage.GB_STORAGE_SYNC_NOT_SYNCED;
+            image.setGbStorageSyncStatus(status);
+            StaticValues.db.imageDao().update(image);
+            if (status == GbcImage.GB_STORAGE_SYNCED) {
+                syncedCount++;
+            } else {
+                notSyncedCount++;
+            }
+        }
+        return new SyncStatusSummary(images.size(), syncedCount, notSyncedCount);
+    }
+
+    private static Set<String> queryDuplicateHashes(List<GbcImage> images) throws Exception {
+        Set<String> duplicateHashes = new HashSet<>();
+        for (int startIndex = 0; startIndex < images.size(); startIndex += BATCH_SIZE) {
+            int endIndex = Math.min(startIndex + BATCH_SIZE, images.size());
+            JSONArray hashes = new JSONArray();
+            for (GbcImage image : images.subList(startIndex, endIndex)) {
+                hashes.put(image.getHashCode());
+            }
+
+            HttpResult duplicateResult = executeRequest(
+                    resolveBaseUrl(StaticValues.gbStorageServerAddress) + "/api/images/duplicates/check",
+                    "POST",
+                    StaticValues.gbStorageApiKey,
+                    new JSONObject().put("hashes", hashes));
+
+            if (duplicateResult.responseCode < 200 || duplicateResult.responseCode >= 300) {
+                throw new IOException(duplicateResult.responseBody);
+            }
+
+            JSONObject duplicateJson = new JSONObject(duplicateResult.responseBody);
+            JSONArray duplicatesArray = duplicateJson.optJSONArray("duplicates");
+            if (duplicatesArray == null) {
+                continue;
+            }
+            for (int i = 0; i < duplicatesArray.length(); i++) {
+                JSONObject duplicateObject = duplicatesArray.getJSONObject(i);
+                duplicateHashes.add(duplicateObject.optString("sourceHash"));
+            }
+        }
+        return duplicateHashes;
+    }
+
+    private static void applySyncStatusToHashes(List<GbcImage> images, Set<String> hashes, int status, boolean requireMembership) {
+        if (StaticValues.db == null || images == null || images.isEmpty()) {
+            return;
+        }
+        for (GbcImage image : images) {
+            boolean matches = hashes.contains(image.getHashCode());
+            if ((requireMembership && !matches) || (!requireMembership && !matches)) {
+                continue;
+            }
+            image.setGbStorageSyncStatus(status);
+            StaticValues.db.imageDao().update(image);
+        }
+    }
+
+    private static void markImagesWithStatus(List<GbcImage> images, int status) {
+        if (StaticValues.db == null || images == null) {
+            return;
+        }
+        for (GbcImage image : images) {
+            image.setGbStorageSyncStatus(status);
+            StaticValues.db.imageDao().update(image);
+        }
+    }
+
+    private static void refreshGallerySyncIndicators() {
+        if (GalleryFragment.customGridViewAdapterImage != null) {
+            GalleryFragment.customGridViewAdapterImage.notifyDataSetChanged();
+        }
     }
 
     private static void showMessage(Context context, String message) {

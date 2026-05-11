@@ -28,6 +28,7 @@ import android.widget.TextView;
 
 import com.mraulio.gbcameramanager.R;
 import com.mraulio.gbcameramanager.model.GbcImage;
+import com.mraulio.gbcameramanager.utils.StaticValues;
 import com.mraulio.gbcameramanager.utils.Utils;
 
 import java.text.SimpleDateFormat;
@@ -72,6 +73,7 @@ public class CustomGridViewAdapterImage extends ArrayAdapter<GbcImage> {
             holder.txtDate = (TextView) row.findViewById(R.id.tv_date);
             holder.txtDate.setSelected(true);
             holder.imageItem = (ImageView) row.findViewById(R.id.imageView);
+            holder.syncStatusIcon = (ImageView) row.findViewById(R.id.ivGbStorageSyncStatus);
 
             row.setTag(holder);
         } else {
@@ -146,6 +148,26 @@ public class CustomGridViewAdapterImage extends ArrayAdapter<GbcImage> {
             holder.txtDate.setVisibility(GONE);
         }
 
+        if (StaticValues.showGbStorageSyncIcons) {
+            holder.syncStatusIcon.setVisibility(View.VISIBLE);
+            switch (data.get(position).getGbStorageSyncStatus()) {
+                case GbcImage.GB_STORAGE_SYNCED:
+                    holder.syncStatusIcon.setImageResource(android.R.drawable.presence_online);
+                    holder.syncStatusIcon.setContentDescription(context.getString(R.string.gbstorage_sync_status_synced));
+                    break;
+                case GbcImage.GB_STORAGE_SYNC_NOT_SYNCED:
+                    holder.syncStatusIcon.setImageResource(android.R.drawable.presence_busy);
+                    holder.syncStatusIcon.setContentDescription(context.getString(R.string.gbstorage_sync_status_not_synced));
+                    break;
+                default:
+                    holder.syncStatusIcon.setImageResource(android.R.drawable.presence_invisible);
+                    holder.syncStatusIcon.setContentDescription(context.getString(R.string.gbstorage_sync_status_unknown));
+                    break;
+            }
+        } else {
+            holder.syncStatusIcon.setVisibility(GONE);
+        }
+
         holder.imageItem.setImageBitmap(image);
         DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
         int screenWidth = displayMetrics.widthPixels;
@@ -159,6 +181,6 @@ public class CustomGridViewAdapterImage extends ArrayAdapter<GbcImage> {
 
     private class RecordHolder {
         TextView txtTitle, txtTags, txtDate;
-        ImageView imageItem;
+        ImageView imageItem, syncStatusIcon;
     }
 }

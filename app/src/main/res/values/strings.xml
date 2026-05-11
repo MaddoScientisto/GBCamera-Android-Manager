@@ -295,7 +295,9 @@
     <string name="gbstorage_timestamp_source">Timestamp source</string>
     <string name="gbstorage_creation_date">Image creation date</string>
     <string name="gbstorage_current_time">Current time</string>
+    <string name="gbstorage_show_sync_icons">Show sync icons</string>
     <string name="gbstorage_test_connection">Test connection</string>
+    <string name="gbstorage_refresh_sync_status">Refresh sync status</string>
     <string name="gbstorage_save_settings">Save GB Storage settings</string>
     <string name="gbstorage_test_ok">Connection successful.</string>
     <string name="gbstorage_test_failed">Connection failed.</string>
@@ -321,6 +323,10 @@
     <string name="gbstorage_sync_estimate">Estimated remaining: %1$s</string>
     <string name="gbstorage_sync_duplicates_none">No duplicates found.</string>
     <string name="gbstorage_sync_duplicates_found">%1$d duplicate(s) found.</string>
+    <string name="gbstorage_refresh_sync_status_complete">Synced: %1$d\nNot synced: %2$d\nChecked: %3$d</string>
+    <string name="gbstorage_sync_status_unknown">GB Storage sync status unknown</string>
+    <string name="gbstorage_sync_status_synced">Synced to GB Storage</string>
+    <string name="gbstorage_sync_status_not_synced">Not synced to GB Storage</string>
     <string name="sw_bounce">Bounce</string>
     <string name="sw_sort_palettes">Sort palettes by usage</string>
     <string name="menu_fusion">Fusion</string>

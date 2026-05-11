@@ -13,6 +13,9 @@ import java.util.LinkedHashMap;
 
 @Entity
 public class GbcImage implements Cloneable{
+    public static final int GB_STORAGE_SYNC_UNKNOWN = 0;
+    public static final int GB_STORAGE_SYNCED = 1;
+    public static final int GB_STORAGE_SYNC_NOT_SYNCED = 2;
 
     @PrimaryKey
     @NonNull
@@ -47,6 +50,9 @@ public class GbcImage implements Cloneable{
 
     @ColumnInfo(name = "tags_list")
     private HashSet<String> tags;
+
+    @ColumnInfo(name = "gbstorage_sync_status", defaultValue = "0")
+    private int gbStorageSyncStatus;
 
     public String getFramePaletteId() {
         return framePaletteId;
@@ -89,6 +95,7 @@ public class GbcImage implements Cloneable{
         this.creationDate = new Date(System.currentTimeMillis());
         this.rotation = 0;
         this.tags = new HashSet<>();
+        this.gbStorageSyncStatus = GB_STORAGE_SYNC_UNKNOWN;
     }
 
     @Override
@@ -183,6 +190,14 @@ public class GbcImage implements Cloneable{
 
     public void setFrameId(String frameId) {
         this.frameId = frameId;
+    }
+
+    public int getGbStorageSyncStatus() {
+        return gbStorageSyncStatus;
+    }
+
+    public void setGbStorageSyncStatus(int gbStorageSyncStatus) {
+        this.gbStorageSyncStatus = gbStorageSyncStatus;
     }
 
 }

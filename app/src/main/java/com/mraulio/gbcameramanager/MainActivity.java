@@ -130,6 +130,7 @@ public class MainActivity extends AppCompatActivity {
         StaticValues.alwaysDefaultFrame = StaticValues.sharedPreferences.getBoolean("always_default_frame", false);
         StaticValues.showExtraGallery = StaticValues.sharedPreferences.getBoolean("show_extra_gallery", false);
         StaticValues.showGbStorage = StaticValues.sharedPreferences.getBoolean("show_gbstorage", false);
+        StaticValues.showGbStorageSyncIcons = StaticValues.sharedPreferences.getBoolean("gbstorage_show_sync_icons", false);
         StaticValues.gbStorageServerAddress = StaticValues.sharedPreferences.getString("gbstorage_server_address", "");
         StaticValues.gbStorageApiKey = StaticValues.sharedPreferences.getString("gbstorage_api_key", "");
         StaticValues.gbStorageTimestampSource = StaticValues.sharedPreferences.getString("gbstorage_timestamp_source", "creation_date");

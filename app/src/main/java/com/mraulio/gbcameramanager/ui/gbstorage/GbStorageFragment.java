@@ -10,6 +10,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.Spinner;
 
@@ -36,11 +37,14 @@ public class GbStorageFragment extends Fragment {
         EditText etServerAddress = view.findViewById(R.id.etGbStorageServerAddress);
         EditText etApiKey = view.findViewById(R.id.etGbStorageApiKey);
         Spinner spinnerTimestampSource = view.findViewById(R.id.spGbStorageTimestampSource);
+        CheckBox cbShowSyncIcons = view.findViewById(R.id.cbGbStorageShowSyncIcons);
         Button btnSave = view.findViewById(R.id.btnGbStorageSave);
+        Button btnRefreshSyncStatus = view.findViewById(R.id.btnGbStorageRefreshSyncStatus);
         Button btnTest = view.findViewById(R.id.btnGbStorageTestConnection);
 
         etServerAddress.setText(StaticValues.gbStorageServerAddress);
         etApiKey.setText(StaticValues.gbStorageApiKey);
+        cbShowSyncIcons.setChecked(StaticValues.showGbStorageSyncIcons);
 
         List<String> timestampOptions = new ArrayList<>();
         timestampOptions.add(getString(R.string.gbstorage_creation_date));
@@ -51,9 +55,13 @@ public class GbStorageFragment extends Fragment {
         spinnerTimestampSource.setAdapter(spinnerAdapter);
         spinnerTimestampSource.setSelection("current_time".equals(StaticValues.gbStorageTimestampSource) ? 1 : 0);
 
-        btnSave.setOnClickListener(v -> saveSettings(etServerAddress.getText().toString(), etApiKey.getText().toString(), spinnerTimestampSource.getSelectedItemPosition()));
+        btnSave.setOnClickListener(v -> saveSettings(etServerAddress.getText().toString(), etApiKey.getText().toString(), spinnerTimestampSource.getSelectedItemPosition(), cbShowSyncIcons.isChecked()));
+        btnRefreshSyncStatus.setOnClickListener(v -> {
+            saveSettings(etServerAddress.getText().toString(), etApiKey.getText().toString(), spinnerTimestampSource.getSelectedItemPosition(), cbShowSyncIcons.isChecked());
+            GbStorageSyncManager.refreshAllSyncStatuses(requireActivity());
+        });
         btnTest.setOnClickListener(v -> {
-            saveSettings(etServerAddress.getText().toString(), etApiKey.getText().toString(), spinnerTimestampSource.getSelectedItemPosition());
+            saveSettings(etServerAddress.getText().toString(), etApiKey.getText().toString(), spinnerTimestampSource.getSelectedItemPosition(), cbShowSyncIcons.isChecked());
             LoadingDialog loadingDialog = new LoadingDialog(requireContext(), getString(R.string.loading));
             loadingDialog.showDialog();
             GbStorageSyncManager.testConnection(requireContext(), StaticValues.gbStorageServerAddress, StaticValues.gbStorageApiKey, result -> {
@@ -74,17 +82,19 @@ public class GbStorageFragment extends Fragment {
         return view;
     }
 
-    private void saveSettings(String serverAddress, String apiKey, int timestampSelection) {
+    private void saveSettings(String serverAddress, String apiKey, int timestampSelection, boolean showSyncIcons) {
         String normalizedServerAddress = serverAddress == null ? "" : serverAddress.trim();
         String normalizedApiKey = apiKey == null ? "" : apiKey.trim();
 
         StaticValues.gbStorageServerAddress = normalizedServerAddress;
         StaticValues.gbStorageApiKey = normalizedApiKey;
         StaticValues.gbStorageTimestampSource = timestampSelection == 1 ? "current_time" : "creation_date";
+        StaticValues.showGbStorageSyncIcons = showSyncIcons;
 
         editor.putString("gbstorage_server_address", normalizedServerAddress);
         editor.putString("gbstorage_api_key", normalizedApiKey);
         editor.putString("gbstorage_timestamp_source", StaticValues.gbStorageTimestampSource);
+        editor.putBoolean("gbstorage_show_sync_icons", showSyncIcons);
         editor.apply();
 
         Utils.toast(requireContext(), getString(R.string.gbstorage_save_settings));

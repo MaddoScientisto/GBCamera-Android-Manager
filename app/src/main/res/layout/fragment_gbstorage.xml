@@ -61,12 +61,26 @@
                 android:layout_marginStart="12dp" />
         </LinearLayout>
 
+        <CheckBox
+            android:id="@+id/cbGbStorageShowSyncIcons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/gbstorage_show_sync_icons" />
+
         <Button
             android:id="@+id/btnGbStorageSave"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:text="@string/gbstorage_save_settings" />
+
+        <Button
+            android:id="@+id/btnGbStorageRefreshSyncStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/gbstorage_refresh_sync_status" />
 
         <Button
             android:id="@+id/btnGbStorageTestConnection"

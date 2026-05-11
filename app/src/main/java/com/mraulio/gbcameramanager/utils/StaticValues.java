@@ -44,6 +44,7 @@ public class StaticValues {
     public static boolean alwaysDefaultFrame = false;
     public static boolean showExtraGallery = false;
     public static boolean showGbStorage = false;
+    public static boolean showGbStorageSyncIcons = false;
     public static String gbStorageServerAddress = "";
     public static String gbStorageApiKey = "";
     public static String gbStorageTimestampSource = "creation_date";
