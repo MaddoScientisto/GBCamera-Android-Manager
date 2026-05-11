@@ -11,11 +11,15 @@ import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
+import android.widget.BaseAdapter;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.CheckBox;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -51,6 +55,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -144,6 +149,58 @@ public final class GbStorageSyncManager {
             this.selectedCount = selectedCount;
             this.overwriteCount = overwriteCount;
             this.skippedCount = skippedCount;
+        }
+    }
+
+    private static final class ReviewListAdapter extends BaseAdapter {
+        private final Context context;
+        private final List<SyncPreviewItem> previewItems;
+        private final List<SyncPreviewItem> visibleItems = new ArrayList<>();
+        private final List<String> visibleStatuses = new ArrayList<>();
+
+        ReviewListAdapter(Context context, List<SyncPreviewItem> previewItems, Set<String> overwriteHashes) {
+            this.context = context;
+            this.previewItems = previewItems;
+            updateSelection(overwriteHashes);
+        }
+
+        void updateSelection(Set<String> overwriteHashes) {
+            visibleItems.clear();
+            visibleStatuses.clear();
+            for (SyncPreviewItem item : previewItems) {
+                boolean shouldInclude = !item.duplicate || overwriteHashes.contains(item.image.getHashCode());
+                if (!shouldInclude) {
+                    continue;
+                }
+
+                visibleItems.add(item);
+                visibleStatuses.add(item.duplicate
+                        ? context.getString(R.string.gbstorage_sync_overwrite_label)
+                        : context.getString(R.string.gbstorage_sync_new_label));
+            }
+            notifyDataSetChanged();
+        }
+
+        @Override
+        public int getCount() {
+            return visibleItems.size();
+        }
+
+        @Override
+        public SyncPreviewItem getItem(int position) {
+            return visibleItems.get(position);
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return position;
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            SyncPreviewItem item = getItem(position);
+            String status = visibleStatuses.get(position);
+            return buildPreviewRow(context, item, false, item.duplicate ? context.getString(R.string.gbstorage_sync_duplicate_note) : null, status, null);
         }
     }
 
@@ -324,76 +381,133 @@ public final class GbStorageSyncManager {
             duplicateHeader.setPadding(0, 0, 0, 12);
             duplicateHeader.setTextColor(Color.BLACK);
             root.addView(duplicateHeader);
-        }
 
-        ScrollView scrollView = new ScrollView(activity);
-        LinearLayout contentLayout = new LinearLayout(activity);
-        contentLayout.setOrientation(LinearLayout.VERTICAL);
-        scrollView.addView(contentLayout);
+            Button overwriteAllButton = new Button(activity);
+            overwriteAllButton.setAllCaps(false);
+            LinearLayout.LayoutParams overwriteButtonParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            overwriteButtonParams.bottomMargin = dp(activity, 12);
+            root.addView(overwriteAllButton, overwriteButtonParams);
 
-        List<CheckBox> keepBoxes = new ArrayList<>();
-        if (duplicates.isEmpty()) {
-            TextView noDuplicates = new TextView(activity);
-            noDuplicates.setText(activity.getString(R.string.gbstorage_sync_duplicates_none));
-            noDuplicates.setPadding(0, 0, 0, 16);
-            contentLayout.addView(noDuplicates);
-        } else {
+            Map<String, SyncPreviewItem> previewItemsByHash = new LinkedHashMap<>();
+            for (SyncPreviewItem previewItem : previewItems) {
+                previewItemsByHash.put(previewItem.image.getHashCode(), previewItem);
+            }
+
+            ScrollView duplicateScrollView = new ScrollView(activity);
+            duplicateScrollView.setVerticalScrollBarEnabled(true);
+            duplicateScrollView.setScrollbarFadingEnabled(false);
+            LinearLayout contentLayout = new LinearLayout(activity);
+            contentLayout.setOrientation(LinearLayout.VERTICAL);
+            duplicateScrollView.addView(contentLayout);
+
+            List<CheckBox> keepBoxes = new ArrayList<>();
             for (DuplicateMatch duplicate : duplicates) {
-                SyncPreviewItem previewItem = findPreviewItem(previewItems, duplicate.sourceHash);
+                SyncPreviewItem previewItem = previewItemsByHash.get(duplicate.sourceHash);
                 CheckBox[] checkBoxHolder = new CheckBox[1];
                 ViewGroup row = buildPreviewRow(activity, previewItem, true, activity.getString(R.string.gbstorage_sync_duplicate_note), activity.getString(R.string.gbstorage_sync_overwrite_label), checkBoxHolder);
                 keepBoxes.add(checkBoxHolder[0]);
                 contentLayout.addView(row);
             }
-        }
 
-        TextView reviewHeader = new TextView(activity);
-        reviewHeader.setText(activity.getString(R.string.gbstorage_sync_preview_title));
-        reviewHeader.setPadding(0, 24, 0, 12);
-        reviewHeader.setTextColor(Color.BLACK);
-        contentLayout.addView(reviewHeader);
+            LinearLayout.LayoutParams duplicateListParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            root.addView(duplicateScrollView, duplicateListParams);
 
-        LinearLayout reviewListLayout = new LinearLayout(activity);
-        reviewListLayout.setOrientation(LinearLayout.VERTICAL);
-        contentLayout.addView(reviewListLayout);
+            TextView reviewHeader = new TextView(activity);
+            reviewHeader.setText(activity.getString(R.string.gbstorage_sync_preview_title));
+            reviewHeader.setPadding(0, 24, 0, 12);
+            reviewHeader.setTextColor(Color.BLACK);
+            root.addView(reviewHeader);
 
-        final Runnable refreshReview = () -> {
-            SyncPlan syncPlan = buildSyncPlan(previewItems, duplicates, keepBoxes);
-            summary.setText(activity.getString(R.string.gbstorage_sync_preview_counts, syncPlan.selectedCount, syncPlan.imagesToSync.size(), syncPlan.overwriteCount, syncPlan.skippedCount));
+            TextView reviewEmptyView = new TextView(activity);
+            reviewEmptyView.setText(activity.getString(R.string.gbstorage_sync_duplicates_none));
+            reviewEmptyView.setVisibility(View.GONE);
+            root.addView(reviewEmptyView);
 
-            reviewListLayout.removeAllViews();
-            if (syncPlan.imagesToSync.isEmpty()) {
-                TextView emptyView = new TextView(activity);
-                emptyView.setText(activity.getString(R.string.gbstorage_sync_duplicates_none));
-                reviewListLayout.addView(emptyView);
-                return;
-            }
+            ListView reviewListView = new ListView(activity);
+            reviewListView.setDividerHeight(0);
+            reviewListView.setFastScrollEnabled(true);
+            reviewListView.setFastScrollAlwaysVisible(true);
+            reviewListView.setVerticalScrollBarEnabled(true);
+            reviewListView.setScrollbarFadingEnabled(false);
+            ReviewListAdapter reviewAdapter = new ReviewListAdapter(activity, previewItems, Collections.emptySet());
+            reviewListView.setAdapter(reviewAdapter);
+            root.addView(reviewListView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-            for (SyncPreviewItem item : previewItems) {
-                if (!item.duplicate || syncPlan.overwriteHashes.contains(item.image.getHashCode())) {
-                    String status = item.duplicate && syncPlan.overwriteHashes.contains(item.image.getHashCode())
-                            ? activity.getString(R.string.gbstorage_sync_overwrite_label)
-                            : activity.getString(R.string.gbstorage_sync_new_label);
-                    ViewGroup row = buildPreviewRow(activity, item, false, null, status, null);
-                    reviewListLayout.addView(row);
-                }
-            }
-        };
+            final Runnable[] refreshReviewHolder = new Runnable[1];
+            boolean[] suppressRefresh = new boolean[] { false };
+            refreshReviewHolder[0] = () -> {
+                SyncPlan syncPlan = buildSyncPlan(previewItems, duplicates, keepBoxes);
+                summary.setText(activity.getString(R.string.gbstorage_sync_preview_counts, syncPlan.selectedCount, syncPlan.imagesToSync.size(), syncPlan.overwriteCount, syncPlan.skippedCount));
+                reviewAdapter.updateSelection(syncPlan.overwriteHashes);
+                boolean hasItemsToSync = !syncPlan.imagesToSync.isEmpty();
+                reviewListView.setVisibility(hasItemsToSync ? View.VISIBLE : View.GONE);
+                reviewEmptyView.setVisibility(hasItemsToSync ? View.GONE : View.VISIBLE);
+                overwriteAllButton.setText(syncPlan.overwriteCount > 0
+                        ? activity.getString(R.string.gbstorage_overwrite_none)
+                        : activity.getString(R.string.gbstorage_overwrite_all));
+            };
 
-        if (!keepBoxes.isEmpty()) {
             for (CheckBox keepBox : keepBoxes) {
-                keepBox.setOnCheckedChangeListener((buttonView, isChecked) -> refreshReview.run());
+                keepBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                    if (!suppressRefresh[0]) {
+                        refreshReviewHolder[0].run();
+                    }
+                });
             }
+
+            overwriteAllButton.setOnClickListener(view -> {
+                boolean selectAll = true;
+                for (CheckBox keepBox : keepBoxes) {
+                    if (keepBox.isChecked()) {
+                        selectAll = false;
+                        break;
+                    }
+                }
+
+                suppressRefresh[0] = true;
+                for (CheckBox keepBox : keepBoxes) {
+                    keepBox.setChecked(selectAll);
+                }
+                suppressRefresh[0] = false;
+                refreshReviewHolder[0].run();
+            });
+
+            refreshReviewHolder[0].run();
+
+            builder.setView(root);
+            builder.setPositiveButton(activity.getString(R.string.gbstorage_sync_confirm), (dialog, which) -> {
+                SyncPlan syncPlan = buildSyncPlan(previewItems, duplicates, keepBoxes);
+                startTransfer(activity, syncPlan.imagesToSync, syncPlan.overwriteHashes, timestampSource, normalizeVirtualPath(virtualPathField.getText() == null ? "" : virtualPathField.getText().toString()));
+            });
+            builder.setNegativeButton(activity.getString(R.string.cancel), (dialog, which) -> dialog.dismiss());
+            builder.show();
+            return;
         }
 
-        root.addView(scrollView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        TextView noDuplicates = new TextView(activity);
+        noDuplicates.setText(activity.getString(R.string.gbstorage_sync_duplicates_none));
+        noDuplicates.setPadding(0, 0, 0, 16);
+        root.addView(noDuplicates);
 
-        refreshReview.run();
+        ListView reviewListView = new ListView(activity);
+        reviewListView.setDividerHeight(0);
+        reviewListView.setFastScrollEnabled(true);
+        reviewListView.setFastScrollAlwaysVisible(true);
+        reviewListView.setVerticalScrollBarEnabled(true);
+        reviewListView.setScrollbarFadingEnabled(false);
+        ReviewListAdapter reviewAdapter = new ReviewListAdapter(activity, previewItems, Collections.emptySet());
+        reviewListView.setAdapter(reviewAdapter);
+        root.addView(reviewListView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        summary.setText(activity.getString(R.string.gbstorage_sync_preview_counts, previewItems.size(), previewItems.size(), 0, 0));
 
         builder.setView(root);
         builder.setPositiveButton(activity.getString(R.string.gbstorage_sync_confirm), (dialog, which) -> {
-            SyncPlan syncPlan = buildSyncPlan(previewItems, duplicates, keepBoxes);
-            startTransfer(activity, syncPlan.imagesToSync, syncPlan.overwriteHashes, timestampSource, normalizeVirtualPath(virtualPathField.getText() == null ? "" : virtualPathField.getText().toString()));
+            List<GbcImage> imagesToSync = new ArrayList<>();
+            for (SyncPreviewItem item : previewItems) {
+                imagesToSync.add(item.image);
+            }
+            startTransfer(activity, imagesToSync, Collections.emptySet(), timestampSource, normalizeVirtualPath(virtualPathField.getText() == null ? "" : virtualPathField.getText().toString()));
         });
         builder.setNegativeButton(activity.getString(R.string.cancel), (dialog, which) -> dialog.dismiss());
         builder.show();

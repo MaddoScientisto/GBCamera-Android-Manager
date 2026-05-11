@@ -316,6 +316,8 @@
     <string name="gbstorage_sync_duplicate_note">Already exists on GB Storage</string>
     <string name="gbstorage_keep">Keep / overwrite</string>
     <string name="gbstorage_skip">Skip</string>
+    <string name="gbstorage_overwrite_all">Overwrite all</string>
+    <string name="gbstorage_overwrite_none">Overwrite none</string>
     <string name="gbstorage_sync_in_progress">Syncing to GB Storage</string>
     <string name="gbstorage_sync_complete">GB Storage sync finished.</string>
     <string name="gbstorage_sync_failed">GB Storage sync failed.</string>
