@@ -43,6 +43,10 @@ public class StaticValues {
     public static boolean exportMetadata = false;
     public static boolean alwaysDefaultFrame = false;
     public static boolean showExtraGallery = false;
+    public static boolean showGbStorage = false;
+    public static String gbStorageServerAddress = "";
+    public static String gbStorageApiKey = "";
+    public static String gbStorageTimestampSource = "creation_date";
     public static boolean sortPalettesByUsage = false;
     public static HashMap<String, Integer> timesPalettesUsed = new HashMap<>();
     public static final int DEFAULT_FRAME_MARGIN = 16;
@@ -51,6 +55,7 @@ public class StaticValues {
     public enum CURRENT_FRAGMENT {
         GALLERY,
         EXTRA_GALLERY,
+        GBSTORAGE,
         PALETTES,
         FRAMES,
         IMPORT,

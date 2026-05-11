@@ -55,6 +55,7 @@ public class SettingsFragment extends Fragment {
         CheckBox cbAlwaysDefaultFrame = view.findViewById(R.id.cb_always_default_frame);
         CheckBox cbSquare = view.findViewById(R.id.cbSquare);
         CheckBox cbShowExtraGallery = view.findViewById(R.id.cb_extra_gallery);
+        CheckBox cbShowGbStorage = view.findViewById(R.id.cb_gbstorage);
         Button btnExportDB = view.findViewById(R.id.btnExportDB);
         Button btnRestoreDB = view.findViewById(R.id.btnRestoreDB);
         CheckBox cbSortPalettes = view.findViewById(R.id.sw_sort_palettes);
@@ -155,6 +156,22 @@ public class SettingsFragment extends Fragment {
                 }
                 editor.apply();
                 updateNavigationView(R.id.nav_extra_gallery, StaticValues.showExtraGallery);
+            }
+        });
+
+        cbShowGbStorage.setChecked(StaticValues.showGbStorage);
+        cbShowGbStorage.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                if (isChecked) {
+                    editor.putBoolean("show_gbstorage", true);
+                    StaticValues.showGbStorage = true;
+                } else {
+                    editor.putBoolean("show_gbstorage", false);
+                    StaticValues.showGbStorage = false;
+                }
+                editor.apply();
+                updateNavigationView(R.id.nav_gbstorage, StaticValues.showGbStorage);
             }
         });
 

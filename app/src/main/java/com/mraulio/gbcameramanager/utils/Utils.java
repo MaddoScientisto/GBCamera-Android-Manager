@@ -28,6 +28,8 @@ import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.provider.Settings;
 import android.view.View;
@@ -225,7 +227,13 @@ public class Utils {
     }
 
     public static void toast(Context context, String message) {
-        Toast.makeText(context, message, Toast.LENGTH_SHORT).show();
+        Context toastContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+        Runnable showToast = () -> Toast.makeText(toastContext, message, Toast.LENGTH_SHORT).show();
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            showToast.run();
+        } else {
+            new Handler(Looper.getMainLooper()).post(showToast);
+        }
     }
 
     public static Bitmap rotateBitmap(Bitmap originalBitmap, GbcImage gbcImage) {

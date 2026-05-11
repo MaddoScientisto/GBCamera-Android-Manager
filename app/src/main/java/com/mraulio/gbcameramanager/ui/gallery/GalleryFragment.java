@@ -25,6 +25,7 @@ import static com.mraulio.gbcameramanager.ui.gallery.GalleryUtils.showFilterDial
 import static com.mraulio.gbcameramanager.ui.gallery.GalleryUtils.sortImages;
 
 import static com.mraulio.gbcameramanager.ui.gallery.PaperUtils.paperDialog;
+import static com.mraulio.gbcameramanager.utils.StaticValues.showGbStorage;
 import static com.mraulio.gbcameramanager.utils.Utils.gbcImagesList;
 import static com.mraulio.gbcameramanager.utils.Utils.getHiddenTags;
 import static com.mraulio.gbcameramanager.utils.Utils.getSelectedTags;
@@ -80,6 +81,7 @@ import com.hoho.android.usbserial.driver.UsbSerialPort;
 import com.hoho.android.usbserial.driver.UsbSerialProber;
 import com.hoho.android.usbserial.util.SerialInputOutputManager;
 import com.mraulio.gbcameramanager.MainActivity;
+import com.mraulio.gbcameramanager.ui.gbstorage.GbStorageSyncManager;
 import com.mraulio.gbcameramanager.ui.usbserial.PrintOverArduino;
 import com.mraulio.gbcameramanager.utils.AnimatedGifEncoder;
 import com.mraulio.gbcameramanager.utils.DiskCache;
@@ -1088,6 +1090,13 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
                 } else
                     Utils.toast(getContext(), getString(R.string.no_selected));
                 return true;
+            case R.id.action_gbstorage_sync:
+                if (selectionMode[0] && !selectedImages.isEmpty()) {
+                    GbStorageSyncManager.startSelectionSync(getActivity(), selectedImages, filteredGbcImages);
+                } else {
+                    Utils.toast(getContext(), getString(R.string.no_selected));
+                }
+                return true;
             case R.id.action_rgb:
                 if (!selectedImages.isEmpty()) {
                     if (selectedImages.size() != 3 && selectedImages.size() != 4) {
@@ -1333,6 +1342,15 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
                 break;
         }
         return false;
+    }
+
+    @Override
+    public void onPrepareOptionsMenu(android.view.Menu menu) {
+        super.onPrepareOptionsMenu(menu);
+        MenuItem syncItem = menu.findItem(R.id.action_gbstorage_sync);
+        if (syncItem != null) {
+            syncItem.setVisible(showGbStorage && selectionMode[0] && !selectedImages.isEmpty());
+        }
     }
 
 

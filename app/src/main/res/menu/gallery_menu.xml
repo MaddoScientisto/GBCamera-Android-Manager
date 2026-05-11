@@ -59,6 +59,11 @@
         android:title="@string/json_backup_item"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_gbstorage_sync"
+        android:orderInCategory="100"
+        android:title="@string/gbstorage_sync_selected"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_duplicate"
         android:orderInCategory="100"
         android:title="@string/action_duplicate"

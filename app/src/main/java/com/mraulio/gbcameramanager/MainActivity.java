@@ -87,6 +87,22 @@ public class MainActivity extends AppCompatActivity {
     public static UsbManager manager;
     public static boolean openedFromFile = false;
 
+    private void handleIncomingIntent(@Nullable Intent intent) {
+        if (intent == null) {
+            return;
+        }
+
+        String action = intent.getAction();
+        String type = intent.getType();
+        mUri = intent.getData();
+        if (mUri == null) {
+            mUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+        }
+
+        openedFromFile = (Intent.ACTION_VIEW.equals(action) || Intent.ACTION_SEND.equals(action)) && type != null;
+        mOpenedFromUsb = UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -113,6 +129,10 @@ public class MainActivity extends AppCompatActivity {
         StaticValues.exportMetadata = StaticValues.sharedPreferences.getBoolean("export_metadata", false);
         StaticValues.alwaysDefaultFrame = StaticValues.sharedPreferences.getBoolean("always_default_frame", false);
         StaticValues.showExtraGallery = StaticValues.sharedPreferences.getBoolean("show_extra_gallery", false);
+        StaticValues.showGbStorage = StaticValues.sharedPreferences.getBoolean("show_gbstorage", false);
+        StaticValues.gbStorageServerAddress = StaticValues.sharedPreferences.getString("gbstorage_server_address", "");
+        StaticValues.gbStorageApiKey = StaticValues.sharedPreferences.getString("gbstorage_api_key", "");
+        StaticValues.gbStorageTimestampSource = StaticValues.sharedPreferences.getString("gbstorage_timestamp_source", "creation_date");
         StaticValues.sortPalettesByUsage = StaticValues.sharedPreferences.getBoolean("sort_palettes_by_usage", false);
         StaticValues.inclusiveTags = StaticValues.sharedPreferences.getBoolean("inclusive_tags", true);
 
@@ -175,14 +195,7 @@ public class MainActivity extends AppCompatActivity {
                         AppDatabase.class, "Database")
                 .build();
 
-        // Obtain Intent information
-        Intent intent = getIntent();
-        String action = intent.getAction();
-        String type = intent.getType();
-        mUri = intent.getData();
-        if (mUri == null) {
-            mUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);// For the SEND action
-        }
+        handleIncomingIntent(getIntent());
 
 
         binding = ActivityMainBinding.inflate(getLayoutInflater());
@@ -230,17 +243,10 @@ public class MainActivity extends AppCompatActivity {
         // Passing each menu ID as a set of Ids because each
         // menu should be considered as top level destinations.
         mAppBarConfiguration = new AppBarConfiguration.Builder(
-                R.id.nav_gallery)
+            R.id.nav_gallery,
+            R.id.nav_gbstorage)
                 .setOpenableLayout(drawer)
                 .build();
-
-        if ((Intent.ACTION_VIEW.equals(action) || Intent.ACTION_SEND.equals(action)) && type != null) {
-
-            // IF the Intent contains the action ACTION_VIEW and the category CATEGORY_DEFAULT and
-            openedFromFile = true;
-        } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
-            mOpenedFromUsb = true;
-        }
 
         if (!doneLoading) {
             mLoadDialog = new LoadingDialog(this, null);
@@ -289,8 +295,20 @@ public class MainActivity extends AppCompatActivity {
             Bundle bundle = new Bundle();
             bundle.putString("fileUri", mUri.toString());
             navController.navigate(R.id.nav_import, bundle);
+            openedFromFile = false;
         } else if (mOpenedFromUsb) {
             navController.navigate(R.id.nav_usbserial);
+            mOpenedFromUsb = false;
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingIntent(intent);
+        if (doneLoading && mNavController != null) {
+            openingFromIntent(mNavController);
         }
     }
 
@@ -350,6 +368,7 @@ public class MainActivity extends AppCompatActivity {
                 break;
             case PALETTES:
             case SETTINGS:
+            case GBSTORAGE:
             case SAVE_MANAGER:
             case USB_SERIAL:
             case IMPORT:
@@ -360,6 +379,7 @@ public class MainActivity extends AppCompatActivity {
                 break;
         }
         updateNavigationView(R.id.nav_extra_gallery, StaticValues.showExtraGallery);
+        updateNavigationView(R.id.nav_gbstorage, StaticValues.showGbStorage);
         return super.onPrepareOptionsMenu(menu);
     }
 

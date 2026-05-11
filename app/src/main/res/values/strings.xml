@@ -13,6 +13,7 @@
     <string name="menu_frames">Frames</string>
     <string name="menu_import">Import</string>
     <string name="menu_usbserial">USB Serial</string>
+    <string name="menu_gbstorage">GB Storage</string>
 
     <string name="menu_settings">Settings</string>
 
@@ -288,6 +289,38 @@
     <string name="menu_extra_gallery">Extra gallery</string>
     <string name="action_toggle_info">Toggle info</string>
     <string name="settings_show_extra_gallery">Show extra gallery</string>
+    <string name="settings_show_gbstorage">Enable GB Storage</string>
+    <string name="gbstorage_server_address">Server address</string>
+    <string name="gbstorage_api_key">API key</string>
+    <string name="gbstorage_timestamp_source">Timestamp source</string>
+    <string name="gbstorage_creation_date">Image creation date</string>
+    <string name="gbstorage_current_time">Current time</string>
+    <string name="gbstorage_test_connection">Test connection</string>
+    <string name="gbstorage_save_settings">Save GB Storage settings</string>
+    <string name="gbstorage_test_ok">Connection successful.</string>
+    <string name="gbstorage_test_failed">Connection failed.</string>
+    <string name="gbstorage_test_dialog_title">GB Storage connection</string>
+    <string name="gbstorage_sync_selected">Sync selected to GB Storage</string>
+    <string name="gbstorage_sync_title">Sync to GB Storage</string>
+    <string name="gbstorage_duplicates_title">Duplicate images found</string>
+    <string name="gbstorage_sync_preview_title">Review sync</string>
+    <string name="gbstorage_sync_preview_counts">Selected: %1$d\nTo sync: %2$d\nOverwritten: %3$d\nSkipped: %4$d</string>
+    <string name="gbstorage_sync_continue">Continue</string>
+    <string name="gbstorage_sync_confirm">Start sync</string>
+    <string name="gbstorage_virtual_path">Virtual folder path</string>
+    <string name="gbstorage_sync_new_label">New</string>
+    <string name="gbstorage_sync_overwrite_label">Overwrite</string>
+    <string name="gbstorage_overwrite_existing">Overwrite existing</string>
+    <string name="gbstorage_sync_duplicate_note">Already exists on GB Storage</string>
+    <string name="gbstorage_keep">Keep / overwrite</string>
+    <string name="gbstorage_skip">Skip</string>
+    <string name="gbstorage_sync_in_progress">Syncing to GB Storage</string>
+    <string name="gbstorage_sync_complete">GB Storage sync finished.</string>
+    <string name="gbstorage_sync_failed">GB Storage sync failed.</string>
+    <string name="gbstorage_sync_progress">%1$d / %2$d images</string>
+    <string name="gbstorage_sync_estimate">Estimated remaining: %1$s</string>
+    <string name="gbstorage_sync_duplicates_none">No duplicates found.</string>
+    <string name="gbstorage_sync_duplicates_found">%1$d duplicate(s) found.</string>
     <string name="sw_bounce">Bounce</string>
     <string name="sw_sort_palettes">Sort palettes by usage</string>
     <string name="menu_fusion">Fusion</string>

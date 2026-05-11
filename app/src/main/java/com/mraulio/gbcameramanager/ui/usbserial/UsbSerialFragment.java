@@ -9,6 +9,7 @@ import static com.mraulio.gbcameramanager.utils.Utils.toast;
 
 import android.app.AlertDialog;
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -26,6 +27,7 @@ import android.os.Bundle;
 
 import androidx.documentfile.provider.DocumentFile;
 import androidx.fragment.app.Fragment;
+import androidx.core.content.ContextCompat;
 
 import android.os.Handler;
 import android.text.method.ScrollingMovementMethod;
@@ -94,7 +96,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     SerialInputOutputManager usbIoManager;
     String romName = "";
     int numImagesAdded;
-    private static final String ACTION_USB_PERMISSION = "com.android.example.USB_PERMISSION";
+    private static final String ACTION_USB_PERMISSION = "com.mraulio.gbcameramanager.USB_PERMISSION";
     boolean isRomExtracted;
     public static LinearLayout layoutCb;
     public static LinearLayout layoutPicNRecControls;
@@ -137,6 +139,36 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     private int picNRecReportedLastImageNumber = 0;
     private int picNRecEffectiveLastImageIndex = 0;
     private int picNRecPreviewImageNumber = PicNRecCommands.FIRST_IMAGE_SLOT;
+    private PendingUsbAction pendingUsbAction = PendingUsbAction.NONE;
+    private boolean usbReceiverRegistered = false;
+
+    private enum PendingUsbAction {
+        NONE,
+        GBX_MODE,
+        READ_ROM_NAME,
+        READ_RAM,
+        FULL_ROM,
+        PICNREC_MODE,
+        READ_PICNREC
+    }
+
+    private final BroadcastReceiver usbPermissionReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!ACTION_USB_PERMISSION.equals(intent.getAction())) {
+                return;
+            }
+
+            if (!intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                pendingUsbAction = PendingUsbAction.NONE;
+                tv.setText("USB permission denied");
+                toast(requireContext(), "USB permission denied");
+                return;
+            }
+
+            resumePendingUsbAction();
+        }
+    };
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
@@ -399,10 +431,16 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             extractedImagesList.clear();
             extractedImagesBitmaps.clear();
             fullRomFileList.clear();
+            if (!ensureGbxConnection(PendingUsbAction.FULL_ROM)) {
+                return;
+            }
             fullRomDump();
         });
 
         btnReadRomName.setOnClickListener(v -> {
+            if (!ensureGbxConnection(PendingUsbAction.READ_ROM_NAME)) {
+                return;
+            }
             completeReadRomName();
         });
 
@@ -413,13 +451,18 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             btnAddImages.setVisibility(View.GONE);
             extractedImagesList.clear();
             extractedImagesBitmaps.clear();
+            if (!ensureGbxConnection(PendingUsbAction.READ_RAM)) {
+                return;
+            }
             completeRamDump();
         });
 
         btnReadPicNRec.setOnClickListener(v -> {
             try {
                 if (port == null || !port.isOpen()) {
-                    connectPicNRecSerial();
+                    if (!ensurePicNRecConnection(PendingUsbAction.READ_PICNREC)) {
+                        return;
+                    }
                 }
                 String rangeError = getPicNRecRangeError();
                 if (!rangeError.isEmpty()) {
@@ -479,6 +522,114 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         return view;
     }
 
+    @Override
+    public void onStart() {
+        super.onStart();
+        if (!usbReceiverRegistered) {
+            IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
+            ContextCompat.registerReceiver(requireContext(), usbPermissionReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
+            usbReceiverRegistered = true;
+        }
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        if (usbReceiverRegistered) {
+            requireContext().unregisterReceiver(usbPermissionReceiver);
+            usbReceiverRegistered = false;
+        }
+    }
+
+    private void resumePendingUsbAction() {
+        PendingUsbAction action = pendingUsbAction;
+        pendingUsbAction = PendingUsbAction.NONE;
+
+        switch (action) {
+            case GBX_MODE:
+                gbxMode();
+                break;
+            case READ_ROM_NAME:
+                if (ensureGbxConnection(PendingUsbAction.READ_ROM_NAME)) {
+                    completeReadRomName();
+                }
+                break;
+            case READ_RAM:
+                if (ensureGbxConnection(PendingUsbAction.READ_RAM)) {
+                    completeRamDump();
+                }
+                break;
+            case FULL_ROM:
+                if (ensureGbxConnection(PendingUsbAction.FULL_ROM)) {
+                    fullRomDump();
+                }
+                break;
+            case PICNREC_MODE:
+                picNRecMode();
+                break;
+            case READ_PICNREC:
+                if (ensurePicNRecConnection(PendingUsbAction.READ_PICNREC)) {
+                    new PicNRecCommands.ReadPicNRecAsyncTask(port, getContext(), tv, parsePicNRecNumber(etPicNRecStart), parsePicNRecNumber(etPicNRecEnd)).execute();
+                }
+                break;
+            case NONE:
+            default:
+                break;
+        }
+    }
+
+    private boolean ensureGbxConnection(PendingUsbAction actionOnPermission) {
+        pendingUsbAction = actionOnPermission;
+        try {
+            connect();
+            if (usbIoManager != null) {
+                usbIoManager.stop();
+            }
+            port.setParameters(BAUDRATE, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
+            port.setDTR(true);
+            port.setRTS(true);
+            GBxCartCommands.readFirmwareInfo(port);
+            pendingUsbAction = PendingUsbAction.NONE;
+            return true;
+        } catch (IllegalStateException e) {
+            tv.setText(e.getMessage());
+            return false;
+        } catch (Exception e) {
+            pendingUsbAction = PendingUsbAction.NONE;
+            tv.setText("Error in CONNECT\n" + e);
+            Toast.makeText(getContext(), "Error in connect." + e, Toast.LENGTH_SHORT).show();
+            return false;
+        }
+    }
+
+    private boolean ensurePicNRecConnection(PendingUsbAction actionOnPermission) {
+        pendingUsbAction = actionOnPermission;
+        try {
+            connect();
+            if (port == null) {
+                throw new IllegalStateException("No USB serial device found");
+            }
+            if (usbIoManager != null) {
+                usbIoManager.stop();
+            }
+            port.setParameters(PicNRecCommands.DEFAULT_BAUD_RATE, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
+            port.setDTR(true);
+            port.setRTS(true);
+            PicNRecCommands.flushInput(port);
+            tv.append(getString(R.string.tv_connected));
+            pendingUsbAction = PendingUsbAction.NONE;
+            return true;
+        } catch (IllegalStateException e) {
+            tv.setText(e.getMessage());
+            return false;
+        } catch (Exception e) {
+            pendingUsbAction = PendingUsbAction.NONE;
+            tv.setText(getString(R.string.picnrec_error) + e);
+            Toast.makeText(getContext(), getString(R.string.picnrec_error) + e, Toast.LENGTH_LONG).show();
+            return false;
+        }
+    }
+
     public void arduinoPrinterMode() {
         try {
             gbxMode = false;
@@ -535,25 +686,9 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         btnReadRam.setVisibility(View.VISIBLE);
         spSaveType.setVisibility(View.VISIBLE);
         btnReadRomName.setVisibility(View.VISIBLE);
-        try {
-            connect();
-        } catch (Exception e) {
-            Toast toast = Toast.makeText(getContext(), "Error in CONNECT\n" + e.toString(), Toast.LENGTH_LONG);
-            toast.show();
+        if (!ensureGbxConnection(PendingUsbAction.GBX_MODE)) {
+            return;
         }
-        try {
-            usbIoManager.stop();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        try {
-            port.setParameters(BAUDRATE, 8, UsbSerialPort.STOPBITS_2, UsbSerialPort.PARITY_NONE);
-            port.setDTR(true);
-            port.setRTS(true);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        GBxCartCommands.readFirmwareInfo(port);
         completeReadRomName();
     }
 
@@ -572,33 +707,15 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         btnAddImages.setVisibility(View.GONE);
         btnDelSav.setVisibility(View.GONE);
         layoutCb.setVisibility(View.GONE);
-        try {
-            connectPicNRecSerial();
-            detectPicNRecDevice();
-        } catch (Exception e) {
-            Toast toast = Toast.makeText(getContext(), getString(R.string.picnrec_error) + e.toString(), Toast.LENGTH_LONG);
-            toast.show();
+        if (!ensurePicNRecConnection(PendingUsbAction.PICNREC_MODE)) {
+            return;
         }
+        detectPicNRecDevice();
     }
 
     private void connectPicNRecSerial() {
-        connect();
-        if (port == null) {
-            throw new IllegalStateException("No USB serial device found");
-        }
-        try {
-            usbIoManager.stop();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        try {
-            port.setParameters(PicNRecCommands.DEFAULT_BAUD_RATE, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
-            port.setDTR(true);
-            port.setRTS(true);
-            PicNRecCommands.flushInput(port);
-            tv.append(getString(R.string.tv_connected));
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
+        if (!ensurePicNRecConnection(PendingUsbAction.PICNREC_MODE)) {
+            throw new IllegalStateException("USB permission requested. Try again after accepting it.");
         }
     }
 
@@ -1019,7 +1136,8 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 flags |= PendingIntent.FLAG_MUTABLE;
             }
-            PendingIntent permissionIntent = PendingIntent.getBroadcast(getContext(), 0, new Intent(ACTION_USB_PERMISSION), flags);
+            Intent permissionBroadcast = new Intent(ACTION_USB_PERMISSION).setPackage(requireContext().getPackageName());
+            PendingIntent permissionIntent = PendingIntent.getBroadcast(getContext(), 0, permissionBroadcast, flags);
             manager.requestPermission(device, permissionIntent);
             throw new IllegalStateException("USB permission requested. Try again after accepting it.");
         }

@@ -13,9 +13,9 @@ import static com.mraulio.gbcameramanager.ui.usbserial.UsbSerialUtils.magicIsRea
 import android.content.Context;
 import android.os.AsyncTask;
 import android.os.Build;
+import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
-import android.widget.Toast;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
 import com.mraulio.gbcameramanager.R;
 import com.mraulio.gbcameramanager.ui.usbserial.UsbSerialFragment;
@@ -45,6 +45,7 @@ import java.util.Map;
 public class GBxCartCommands {
     //Class that contains the methods to communicate with the GBxCart
     //Translated from the code from Lesserkuma
+    private static final String TAG = "GBxCartCommands";
 
     private static final int TIMEOUT = 2000;
     private static FileOutputStream fos = null;
@@ -481,7 +482,8 @@ public class GBxCartCommands {
                 tv.append("\n" + tv.getContext().getString(R.string.done_dumping_photo));
 
             } catch (Exception e) {
-                Toast.makeText(context, "Error en FullReadRom\n" + e.toString(), Toast.LENGTH_LONG).show();
+                Log.e(TAG, "Full ROM dump failed", e);
+                Utils.toast(context, "Error en FullReadRom\n" + e);
             }
 
             publishProgress(100, 1);
@@ -596,8 +598,8 @@ public class GBxCartCommands {
                     throw new IllegalStateException("Couldn't create dir: " + parent);
                 }
             } catch (Exception e) {
-                Toast toast = Toast.makeText(context, "Error making file: " + e.toString(), Toast.LENGTH_SHORT);
-                toast.show();
+                Log.e(TAG, "Couldn't prepare RAM dump output file", e);
+                Utils.toast(context, "Error making file: " + e);
             }
             //# Enable SRAM access
             Cart_write(0x6000, 0x01, port, context);
@@ -637,7 +639,8 @@ public class GBxCartCommands {
                 bos.write(outputStream.toByteArray());
                 bos.close();
             } catch (Exception e) {
-                Utils.toast(context, "Error en READRAM\n" + e.toString());
+                Log.e(TAG, "RAM dump failed", e);
+                Utils.toast(context, "Error en READRAM\n" + e);
             }
             return null;
         }
