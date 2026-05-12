@@ -99,6 +99,7 @@ public class Utils {
     private static final String DB_NAME = "Database";
     private static final String DB_NAME_SHM = "Database-shm";
     private static final String DB_NAME_WAL = "Database-wal";
+    private static final int MIN_RESTORABLE_DB_VERSION = 5;
 
     public static LinkedHashMap<String, String> frameGroupsNames = new LinkedHashMap<>();
 
@@ -362,7 +363,7 @@ public class Utils {
             return;
         }
 
-        //Show only the database backups with version equal to actual version
+        // Show backups that the current Room schema can migrate from.
         int databaseVersion = StaticValues.db.getOpenHelper().getReadableDatabase().getVersion();
 
         File directory = new File(DB_BACKUP_FOLDER.toURI());
@@ -373,16 +374,10 @@ public class Utils {
         if (files != null) {
             for (File file : files) {
                 if (file.isDirectory()) {
-                    //If the directory name matches the database version, show it
-
-                    Pattern pattern = Pattern.compile("\\d+$");
-                    Matcher matcher = pattern.matcher(file.getName());
-                    if (matcher.find()) {
-                        int version = Integer.parseInt(matcher.group());
-                        if (version == databaseVersion) {
-                            directories.add(file);
-                            directoriesNames.add(file.getName());
-                        }
+                    int backupVersion = getBackupDatabaseVersion(file);
+                    if (isBackupVersionRestorable(backupVersion, databaseVersion)) {
+                        directories.add(file);
+                        directoriesNames.add(file.getName());
                     }
                 }
             }
@@ -434,6 +429,20 @@ public class Utils {
                 selectedDirectory[0] = directories.get(position);
             }
         });
+    }
+
+    private static int getBackupDatabaseVersion(File backupDirectory) {
+        Pattern pattern = Pattern.compile("_v(\\d+)$");
+        Matcher matcher = pattern.matcher(backupDirectory.getName());
+        if (!matcher.find()) {
+            return -1;
+        }
+
+        return Integer.parseInt(matcher.group(1));
+    }
+
+    private static boolean isBackupVersionRestorable(int backupVersion, int currentDatabaseVersion) {
+        return backupVersion >= MIN_RESTORABLE_DB_VERSION && backupVersion <= currentDatabaseVersion;
     }
 
     public static void restoreDatabase(Context context, File backupDir, Activity activity) {

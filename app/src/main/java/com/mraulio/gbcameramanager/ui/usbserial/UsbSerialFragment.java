@@ -4,6 +4,7 @@ import static com.mraulio.gbcameramanager.utils.StaticValues.dateLocale;
 import static com.mraulio.gbcameramanager.gbxcart.GBxCartConstants.BAUDRATE;
 import static com.mraulio.gbcameramanager.ui.usbserial.UsbSerialUtils.deleteFolderRecursive;
 import static com.mraulio.gbcameramanager.ui.usbserial.UsbSerialUtils.magicIsReal;
+import static com.mraulio.gbcameramanager.utils.StaticValues.FILTER_DUPLICATED;
 import static com.mraulio.gbcameramanager.utils.Utils.saveTypeNames;
 import static com.mraulio.gbcameramanager.utils.Utils.toast;
 
@@ -53,10 +54,14 @@ import android.widget.Toast;
 import com.hoho.android.usbserial.driver.UsbSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
 import com.hoho.android.usbserial.driver.UsbSerialProber;
+import com.hoho.android.usbserial.driver.CdcAcmSerialDriver;
+import com.hoho.android.usbserial.driver.ProbeTable;
 import com.hoho.android.usbserial.util.SerialInputOutputManager;
 import com.mraulio.gbcameramanager.MainActivity;
 import com.mraulio.gbcameramanager.ui.gallery.CustomGridViewAdapterImage;
+import com.mraulio.gbcameramanager.ui.gallery.SaveImageAsyncTask;
 import com.mraulio.gbcameramanager.ui.importFile.ImagesImportDialog;
+import com.mraulio.gbcameramanager.utils.LoadingDialog;
 import com.mraulio.gbcameramanager.utils.StaticValues;
 import com.mraulio.gbcameramanager.utils.Utils;
 import com.mraulio.gbcameramanager.R;
@@ -79,7 +84,9 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -110,14 +117,22 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
 
     TextView tvMode;
     public static Button btnSave, btnReadRomName, btnReadRam, btnFullRom, btnPrintBanner, btnAddImages, btnDelSav, btnDecode, btnDelete, btnReadPicNRec;
+    Button btnImportPicoGbSerialBuffer;
+    Button btnClearPicoGbSerialBuffer;
+    Button btnSelectAllPicoGbSerialBuffer;
+    EditText etPicoGbSerialImportTag;
+    ImageView ivPicoGbSerialLastPreview;
     Button btnPicNRecStartFirst, btnPicNRecStartCurrent, btnPicNRecEndCurrent, btnPicNRecEndLast, btnPicNRecPreviewMinus, btnPicNRecPreviewPlus, btnPicNRecPreviewLast, btnPicNRecPreviewMinusTen, btnPicNRecPreviewPlusTen, btnPicNRecPreviewFirst;
     EditText etPicNRecStart, etPicNRecEnd;
     ImageView ivPicNRecPreview;
     SeekBar sbPicNRecPreview;
     TextView tvPicNRecDeviceInfo, tvPicNRecPreviewStatus;
-    RadioButton rbGbx, rbApe, rbPicNRec;
+    RadioButton rbGbx, rbApe, rbPicNRec, rbPicoGbSerial;
     public static RadioButton rbPrint;
     RadioGroup rbGroup;
+    LinearLayout layoutPicoGbSerialControls;
+    CheckBox cbPicoGbSerialAutoImport;
+    CheckBox cbPicoGbSerialAutoDeleteDuplicates;
     //    public static Switch swIsCartJpUsb;
     Spinner spSaveType;
 
@@ -141,6 +156,13 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     private int picNRecPreviewImageNumber = PicNRecCommands.FIRST_IMAGE_SLOT;
     private PendingUsbAction pendingUsbAction = PendingUsbAction.NONE;
     private boolean usbReceiverRegistered = false;
+    private PicoGbSerialCommands.ReceivePicoGbSerialAsyncTask picoGbSerialReceiveTask;
+    private boolean picoGbSerialActive = false;
+    private int picoGbSerialCaptureCount = 0;
+    private PicoGbSerialCommands.StreamParser picoGbSerialStreamParser;
+    private final List<Integer> picoGbSerialSelectedImages = new ArrayList<>();
+    private CustomGridViewAdapterImage picoGbSerialBufferAdapter;
+    private final Handler picoGbSerialClearHandler = new Handler();
 
     private enum PendingUsbAction {
         NONE,
@@ -149,7 +171,8 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         READ_RAM,
         FULL_ROM,
         PICNREC_MODE,
-        READ_PICNREC
+        READ_PICNREC,
+        PICO_GB_SERIAL_MODE
     }
 
     private final BroadcastReceiver usbPermissionReceiver = new BroadcastReceiver() {
@@ -186,6 +209,14 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         cbDeleted = view.findViewById(R.id.cbDeletedImages);
         layoutCb = view.findViewById(R.id.layout_cb);
         layoutPicNRecControls = view.findViewById(R.id.layoutPicNRecControls);
+        layoutPicoGbSerialControls = view.findViewById(R.id.layoutPicoGbSerialControls);
+        cbPicoGbSerialAutoImport = view.findViewById(R.id.cbPicoGbSerialAutoImport);
+        cbPicoGbSerialAutoDeleteDuplicates = view.findViewById(R.id.cbPicoGbSerialAutoDeleteDuplicates);
+        etPicoGbSerialImportTag = view.findViewById(R.id.etPicoGbSerialImportTag);
+        btnImportPicoGbSerialBuffer = view.findViewById(R.id.btnImportPicoGbSerialBuffer);
+        btnClearPicoGbSerialBuffer = view.findViewById(R.id.btnClearPicoGbSerialBuffer);
+        btnSelectAllPicoGbSerialBuffer = view.findViewById(R.id.btnSelectAllPicoGbSerialBuffer);
+        ivPicoGbSerialLastPreview = view.findViewById(R.id.ivPicoGbSerialLastPreview);
         tvPicNRecDeviceInfo = view.findViewById(R.id.tvPicNRecDeviceInfo);
         tvPicNRecPreviewStatus = view.findViewById(R.id.tvPicNRecPreviewStatus);
         etPicNRecStart = view.findViewById(R.id.etPicNRecStart);
@@ -241,6 +272,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         rbApe = view.findViewById(R.id.rbApe);
         rbGbx = view.findViewById(R.id.rbGbx);
         rbPicNRec = view.findViewById(R.id.rbPicNRec);
+        rbPicoGbSerial = view.findViewById(R.id.rbPicoGbSerial);
         rbPrint = view.findViewById(R.id.rbPrint);
 
         List<Integer> sizesInteger = new ArrayList<>();
@@ -489,6 +521,21 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         rbPrint.setOnClickListener(v -> printOverArduinoMode());
         rbGbx.setOnClickListener(v -> gbxMode());
         rbPicNRec.setOnClickListener(v -> picNRecMode());
+        rbPicoGbSerial.setOnClickListener(v -> picoGbSerialMode());
+        btnImportPicoGbSerialBuffer.setOnClickListener(v -> importPicoGbSerialBuffer());
+        btnClearPicoGbSerialBuffer.setOnClickListener(v -> clearPicoGbSerialBuffer());
+        btnSelectAllPicoGbSerialBuffer.setOnClickListener(v -> selectAllPicoGbSerialBuffer());
+        gridView.setOnItemClickListener((parent, itemView, position, id) -> {
+            if (!picoGbSerialActive || position < 0 || position >= finalListImages.size()) {
+                return;
+            }
+            if (picoGbSerialSelectedImages.contains(position)) {
+                picoGbSerialSelectedImages.remove(Integer.valueOf(position));
+            } else {
+                picoGbSerialSelectedImages.add(position);
+            }
+            refreshPicoGbSerialBuffer();
+        });
 
         btnPicNRecStartFirst.setOnClickListener(v -> etPicNRecStart.setText(String.valueOf(PicNRecCommands.FIRST_IMAGE_SLOT)));
         btnPicNRecStartCurrent.setOnClickListener(v -> etPicNRecStart.setText(String.valueOf(picNRecPreviewImageNumber)));
@@ -539,6 +586,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             requireContext().unregisterReceiver(usbPermissionReceiver);
             usbReceiverRegistered = false;
         }
+        stopPicoGbSerialReceiving();
     }
 
     private void resumePendingUsbAction() {
@@ -571,6 +619,9 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
                 if (ensurePicNRecConnection(PendingUsbAction.READ_PICNREC)) {
                     new PicNRecCommands.ReadPicNRecAsyncTask(port, getContext(), tv, parsePicNRecNumber(etPicNRecStart), parsePicNRecNumber(etPicNRecEnd)).execute();
                 }
+                break;
+            case PICO_GB_SERIAL_MODE:
+                picoGbSerialMode();
                 break;
             case NONE:
             default:
@@ -630,10 +681,50 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         }
     }
 
+    private boolean ensurePicoGbSerialConnection(PendingUsbAction actionOnPermission) {
+        pendingUsbAction = actionOnPermission;
+        try {
+            connect();
+            if (port == null) {
+                throw new IllegalStateException("No USB serial device found");
+            }
+            if (usbIoManager != null) {
+                usbIoManager.stop();
+            }
+            try {
+                port.setParameters(PicoGbSerialCommands.DEFAULT_BAUD_RATE, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
+            } catch (Exception e) {
+                tv.append("\n" + getString(R.string.pico_gb_serial_control_warning) + e.toString());
+            }
+            try {
+                port.setDTR(true);
+            } catch (Exception e) {
+                tv.append("\n" + getString(R.string.pico_gb_serial_control_warning) + e.toString());
+            }
+            try {
+                port.setRTS(true);
+            } catch (Exception e) {
+                tv.append("\n" + getString(R.string.pico_gb_serial_control_warning) + e.toString());
+            }
+            tv.append(getString(R.string.tv_connected));
+            pendingUsbAction = PendingUsbAction.NONE;
+            return true;
+        } catch (IllegalStateException e) {
+            tv.setText(e.getMessage());
+            return false;
+        } catch (Exception e) {
+            pendingUsbAction = PendingUsbAction.NONE;
+            tv.setText(getString(R.string.pico_gb_serial_error) + e);
+            Toast.makeText(getContext(), getString(R.string.pico_gb_serial_error) + e, Toast.LENGTH_LONG).show();
+            return false;
+        }
+    }
+
     public void arduinoPrinterMode() {
         try {
             gbxMode = false;
             hidePicNRecControls();
+            hidePicoGbSerialControls();
             tvMode.setVisibility(View.VISIBLE);
             tvMode.setText(getString(R.string.arduino_mode));
             rbGroup.setVisibility(View.GONE);
@@ -660,6 +751,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             gbxMode = false;
             ape = false;
             hidePicNRecControls();
+            hidePicoGbSerialControls();
             tvMode.setVisibility(View.VISIBLE);
             tvMode.setText(getString(R.string.print_mode));
             rbGroup.setVisibility(View.GONE);
@@ -680,6 +772,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         gbxMode = true;
         ape = false;
         hidePicNRecControls();
+        hidePicoGbSerialControls();
         tvMode.setText(getString(R.string.gbxcart_mode));
         tvMode.setVisibility(View.VISIBLE);
         rbGroup.setVisibility(View.GONE);
@@ -695,6 +788,8 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     private void picNRecMode() {
         gbxMode = false;
         ape = false;
+        stopPicoGbSerialReceiving();
+        hidePicoGbSerialControls();
         tvMode.setText(getString(R.string.picnrec_mode));
         tvMode.setVisibility(View.VISIBLE);
         rbGroup.setVisibility(View.GONE);
@@ -713,6 +808,32 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         detectPicNRecDevice();
     }
 
+    private void picoGbSerialMode() {
+        gbxMode = false;
+        ape = false;
+        hidePicNRecControls();
+        tvMode.setText(getString(R.string.pico_gb_serial_mode));
+        tvMode.setVisibility(View.VISIBLE);
+        rbGroup.setVisibility(View.GONE);
+        layoutPicoGbSerialControls.setVisibility(View.VISIBLE);
+        btnReadRam.setVisibility(View.GONE);
+        btnReadRomName.setVisibility(View.GONE);
+        btnFullRom.setVisibility(View.GONE);
+        btnReadPicNRec.setVisibility(View.GONE);
+        spSaveType.setVisibility(View.GONE);
+        btnAddImages.setVisibility(View.GONE);
+        btnDelSav.setVisibility(View.GONE);
+        layoutCb.setVisibility(View.GONE);
+        finalListImages.clear();
+        finalListBitmaps.clear();
+        picoGbSerialSelectedImages.clear();
+        refreshPicoGbSerialBuffer();
+        if (!ensurePicoGbSerialConnection(PendingUsbAction.PICO_GB_SERIAL_MODE)) {
+            return;
+        }
+        startPicoGbSerialReceiving();
+    }
+
     private void connectPicNRecSerial() {
         if (!ensurePicNRecConnection(PendingUsbAction.PICNREC_MODE)) {
             throw new IllegalStateException("USB permission requested. Try again after accepting it.");
@@ -726,6 +847,236 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         if (btnReadPicNRec != null) {
             btnReadPicNRec.setVisibility(View.GONE);
         }
+    }
+
+    private void hidePicoGbSerialControls() {
+        if (layoutPicoGbSerialControls != null) {
+            layoutPicoGbSerialControls.setVisibility(View.GONE);
+        }
+    }
+
+    private void startPicoGbSerialReceiving() {
+        stopPicoGbSerialReceiving();
+        tv.setText(getString(R.string.pico_gb_serial_contacting));
+        picoGbSerialActive = true;
+        picoGbSerialCaptureCount = 0;
+        picoGbSerialStreamParser = new PicoGbSerialCommands.StreamParser();
+        usbIoManager = new SerialInputOutputManager(port, this);
+        usbIoManager.start();
+        tv.setText(getString(R.string.pico_gb_serial_receiving_no_status));
+    }
+
+    private void stopPicoGbSerialReceiving() {
+        picoGbSerialActive = false;
+        picoGbSerialClearHandler.removeCallbacksAndMessages(null);
+        if (picoGbSerialReceiveTask != null) {
+            picoGbSerialReceiveTask.cancel(true);
+            picoGbSerialReceiveTask = null;
+        }
+        if (usbIoManager != null) {
+            usbIoManager.stop();
+        }
+    }
+
+    private void schedulePicoGbSerialClear() {
+        picoGbSerialClearHandler.removeCallbacksAndMessages(null);
+        picoGbSerialClearHandler.postDelayed(() -> {
+            if (!picoGbSerialActive || port == null || !port.isOpen()) {
+                return;
+            }
+            try {
+                port.write("CLEAR\n".getBytes(), 1000);
+                tv.append("\n" + getString(R.string.pico_gb_serial_cleared));
+            } catch (Exception e) {
+                tv.append("\n" + getString(R.string.pico_gb_serial_clear_failed) + e.toString());
+            }
+        }, 500);
+    }
+
+    private void importPicoGbSerialBuffer() {
+        List<GbcImage> images = new ArrayList<>();
+        List<Bitmap> bitmaps = new ArrayList<>();
+        if (picoGbSerialSelectedImages.isEmpty()) {
+            images.addAll(finalListImages);
+            bitmaps.addAll(finalListBitmaps);
+        } else {
+            for (int index : picoGbSerialSelectedImages) {
+                if (index >= 0 && index < finalListImages.size()) {
+                    images.add(finalListImages.get(index));
+                    bitmaps.add(finalListBitmaps.get(index));
+                }
+            }
+        }
+        if (importPicoGbSerialImages(images, bitmaps, false, true, false)) {
+            if (picoGbSerialSelectedImages.isEmpty()) {
+                finalListImages.clear();
+                finalListBitmaps.clear();
+            } else {
+                removeSelectedPicoGbSerialImages();
+            }
+            refreshPicoGbSerialBuffer();
+        }
+    }
+
+    private boolean importPicoGbSerialImages(List<GbcImage> images, List<Bitmap> bitmaps, boolean clearImportedFromBuffer, boolean importDuplicates, boolean quiet) {
+        List<GbcImage> newGbcImages = new ArrayList<>();
+        List<Bitmap> newBitmaps = new ArrayList<>();
+        List<String> hashes = new ArrayList<>();
+        for (int i = 0; i < images.size(); i++) {
+            GbcImage image = images.get(i);
+            boolean alreadyAdded = false;
+            for (GbcImage existingImage : Utils.gbcImagesList) {
+                if (existingImage.getHashCode().equals(image.getHashCode())) {
+                    alreadyAdded = true;
+                    break;
+                }
+            }
+            for (String hash : hashes) {
+                if (hash.equals(image.getHashCode())) {
+                    alreadyAdded = true;
+                    break;
+                }
+            }
+            if (!alreadyAdded) {
+                newGbcImages.add(image);
+                newBitmaps.add(bitmaps.get(i));
+                hashes.add(image.getHashCode());
+            } else if (importDuplicates) {
+                GbcImage duplicateImage = image.clone();
+                duplicateImage.setHashCode(createPicoGbSerialDuplicateHash(image.getHashCode(), newGbcImages));
+                duplicateImage.setTags(new HashSet<>(image.getTags()));
+                duplicateImage.addTag(FILTER_DUPLICATED);
+                newGbcImages.add(duplicateImage);
+                Bitmap bitmap = bitmaps.get(i);
+                Bitmap.Config config = bitmap.getConfig() == null ? Bitmap.Config.ARGB_8888 : bitmap.getConfig();
+                newBitmaps.add(bitmap.copy(config, true));
+                hashes.add(duplicateImage.getHashCode());
+            }
+        }
+
+        if (newGbcImages.isEmpty()) {
+            tv.setText(getString(R.string.no_new_images));
+            toast(getContext(), getString(R.string.no_new_images));
+            return false;
+        }
+
+        applyPicoGbSerialImportTag(newGbcImages);
+
+        LoadingDialog saveDialog = quiet ? null : new LoadingDialog(getContext(), getString(R.string.load_saving_images));
+        if (saveDialog != null) {
+            saveDialog.showDialog();
+        }
+        new SaveImageAsyncTask(newGbcImages, newBitmaps, getContext(), quiet ? null : tv, 0, null, saveDialog, quiet).execute();
+        if (clearImportedFromBuffer) {
+            finalListImages.clear();
+            finalListBitmaps.clear();
+            refreshPicoGbSerialBuffer();
+        }
+        return true;
+    }
+
+    private void applyPicoGbSerialImportTag(List<GbcImage> images) {
+        String tag = etPicoGbSerialImportTag.getText().toString().trim();
+        if (tag.isEmpty()) {
+            return;
+        }
+        for (GbcImage image : images) {
+            image.addTag(tag);
+        }
+    }
+
+    private void clearPicoGbSerialBuffer() {
+        if (picoGbSerialSelectedImages.isEmpty()) {
+            finalListImages.clear();
+            finalListBitmaps.clear();
+        } else {
+            removeSelectedPicoGbSerialImages();
+        }
+        refreshPicoGbSerialBuffer();
+    }
+
+    private void selectAllPicoGbSerialBuffer() {
+        if (!picoGbSerialSelectedImages.isEmpty()) {
+            picoGbSerialSelectedImages.clear();
+            refreshPicoGbSerialBuffer();
+            return;
+        }
+        picoGbSerialSelectedImages.clear();
+        for (int i = 0; i < finalListImages.size(); i++) {
+            picoGbSerialSelectedImages.add(i);
+        }
+        refreshPicoGbSerialBuffer();
+    }
+
+    private void removeSelectedPicoGbSerialImages() {
+        Collections.sort(picoGbSerialSelectedImages, Collections.reverseOrder());
+        for (int index : picoGbSerialSelectedImages) {
+            if (index >= 0 && index < finalListImages.size()) {
+                finalListImages.remove(index);
+                finalListBitmaps.remove(index);
+            }
+        }
+        picoGbSerialSelectedImages.clear();
+    }
+
+    private void refreshPicoGbSerialBuffer() {
+        picoGbSerialSelectedImages.removeIf(index -> index < 0 || index >= finalListImages.size());
+        boolean hasSelection = !picoGbSerialSelectedImages.isEmpty();
+        if (btnImportPicoGbSerialBuffer != null) {
+            btnImportPicoGbSerialBuffer.setText(hasSelection ? R.string.pico_gb_serial_import_selected : R.string.pico_gb_serial_import_buffer);
+        }
+        if (btnClearPicoGbSerialBuffer != null) {
+            btnClearPicoGbSerialBuffer.setText(hasSelection ? R.string.pico_gb_serial_clear_selected : R.string.pico_gb_serial_clear_buffer);
+        }
+        if (btnSelectAllPicoGbSerialBuffer != null) {
+            btnSelectAllPicoGbSerialBuffer.setText(hasSelection ? R.string.pico_gb_serial_select_none : R.string.pico_gb_serial_select_all);
+        }
+        if (picoGbSerialBufferAdapter == null) {
+            picoGbSerialBufferAdapter = new CustomGridViewAdapterImage(getContext(), R.layout.row_items, finalListImages, finalListBitmaps, true, true, true, picoGbSerialSelectedImages, true);
+            gridView.setAdapter(picoGbSerialBufferAdapter);
+        } else {
+            picoGbSerialBufferAdapter.notifyDataSetChanged();
+        }
+    }
+
+    private boolean shouldDropPicoGbSerialDuplicate(GbcImage image) {
+        if (!cbPicoGbSerialAutoDeleteDuplicates.isChecked()) {
+            return false;
+        }
+        for (GbcImage existingImage : Utils.gbcImagesList) {
+            if (existingImage.getHashCode().equals(image.getHashCode())) {
+                return true;
+            }
+        }
+        for (GbcImage bufferedImage : finalListImages) {
+            if (bufferedImage.getHashCode().equals(image.getHashCode())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String createPicoGbSerialDuplicateHash(String originalHash, List<GbcImage> pendingImages) {
+        int suffix = 1;
+        String candidate;
+        do {
+            candidate = originalHash + "-dup-" + suffix++;
+        } while (picoGbSerialHashExists(candidate, pendingImages));
+        return candidate;
+    }
+
+    private boolean picoGbSerialHashExists(String hash, List<GbcImage> pendingImages) {
+        for (GbcImage existingImage : Utils.gbcImagesList) {
+            if (existingImage.getHashCode().equals(hash)) {
+                return true;
+            }
+        }
+        for (GbcImage pendingImage : pendingImages) {
+            if (pendingImage.getHashCode().equals(hash)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void detectPicNRecDevice() {
@@ -1124,7 +1475,9 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
 
     private void connect() {
         manager = (UsbManager) getActivity().getSystemService(Context.USB_SERVICE);
-        List<UsbSerialDriver> availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(manager);
+        ProbeTable customTable = UsbSerialProber.getDefaultProbeTable();
+        customTable.addProduct(PicoGbSerialCommands.PICO_VENDOR_ID, PicoGbSerialCommands.PICO_PRODUCT_ID, CdcAcmSerialDriver.class);
+        List<UsbSerialDriver> availableDrivers = new UsbSerialProber(customTable).findAllDrivers(manager);
         if (availableDrivers.isEmpty()) {
             return;
         }
@@ -1141,6 +1494,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             manager.requestPermission(device, permissionIntent);
             throw new IllegalStateException("USB permission requested. Try again after accepting it.");
         }
+        closeCurrentUsbConnection();
         connection = manager.openDevice(driver.getDevice());
         if (connection == null) {
             throw new IllegalArgumentException("Connection is null");
@@ -1155,15 +1509,93 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         } catch (Exception e) {
             tv.append(e.toString());
             Toast.makeText(getContext(), "Error in connect." + e.toString(), Toast.LENGTH_SHORT).show();
+            throw new IllegalStateException(e);
         }
 
         //USE IN ARDUINO MODE ONLY
         usbIoManager = new SerialInputOutputManager(port, this);
     }
 
+    private void closeCurrentUsbConnection() {
+        try {
+            if (usbIoManager != null) {
+                usbIoManager.stop();
+                usbIoManager = null;
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            if (port != null && port.isOpen()) {
+                port.close();
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            if (connection != null) {
+                connection.close();
+                connection = null;
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     //For the Arduino Printer Emulator or Printing over arduino
     @Override
     public void onNewData(byte[] data) {
+        if (picoGbSerialActive) {
+            try {
+                List<byte[]> payloads = picoGbSerialStreamParser.feed(data);
+                if (payloads.isEmpty()) {
+                    return;
+                }
+                List<PicoGbSerialCommands.DecodedCapture> captures = new ArrayList<>();
+                for (byte[] payload : payloads) {
+                    picoGbSerialCaptureCount++;
+                    captures.add(PicoGbSerialCommands.decodeCapture(getContext(), payload, picoGbSerialCaptureCount));
+                }
+                getActivity().runOnUiThread(() -> {
+                    int bufferedImageCount = 0;
+                    int autoImportedImageCount = 0;
+                    Bitmap lastReceivedBitmap = null;
+                    for (PicoGbSerialCommands.DecodedCapture capture : captures) {
+                        if (!capture.bitmaps.isEmpty()) {
+                            lastReceivedBitmap = capture.bitmaps.get(capture.bitmaps.size() - 1);
+                        }
+                        if (cbPicoGbSerialAutoImport.isChecked()) {
+                            if (importPicoGbSerialImages(capture.images, capture.bitmaps, false, false, true)) {
+                                autoImportedImageCount += capture.images.size();
+                            }
+                        } else {
+                            for (int i = 0; i < capture.images.size(); i++) {
+                                GbcImage image = capture.images.get(i);
+                                if (shouldDropPicoGbSerialDuplicate(image)) {
+                                    continue;
+                                }
+                                finalListImages.add(image);
+                                finalListBitmaps.add(capture.bitmaps.get(i));
+                                bufferedImageCount++;
+                            }
+                        }
+                    }
+                    if (lastReceivedBitmap != null) {
+                        ivPicoGbSerialLastPreview.setImageBitmap(lastReceivedBitmap);
+                    }
+                    refreshPicoGbSerialBuffer();
+                    if (bufferedImageCount > 0) {
+                        gridView.post(() -> gridView.setSelection(finalListImages.size() - 1));
+                    }
+                    int imageCount = 0;
+                    for (PicoGbSerialCommands.DecodedCapture capture : captures) {
+                        imageCount += capture.images.size();
+                    }
+                    tv.setText(getString(R.string.pico_gb_serial_received, picoGbSerialCaptureCount, cbPicoGbSerialAutoImport.isChecked() ? autoImportedImageCount : imageCount, finalListImages.size()));
+                    schedulePicoGbSerialClear();
+                });
+            } catch (Exception e) {
+                getActivity().runOnUiThread(() -> tv.setText(getString(R.string.pico_gb_serial_error) + e.toString()));
+            }
+            return;
+        }
         if (ape) {
             String msg;
             msg = new String(data);

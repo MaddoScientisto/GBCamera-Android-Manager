@@ -60,6 +60,16 @@
 
                 </RadioButton>
 
+                <RadioButton
+                    android:id="@+id/rbPicoGbSerial"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="left"
+                    android:layout_marginHorizontal="10dp"
+                    android:text="@string/rb_pico_gb_serial">
+
+                </RadioButton>
+
             </RadioGroup>
         </LinearLayout>
 
@@ -458,6 +468,81 @@
                             android:text="@string/picnrec_first_caps" />
                     </LinearLayout>
                 </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layoutPicoGbSerialControls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="10dp"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="6dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <CheckBox
+                    android:id="@+id/cbPicoGbSerialAutoImport"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/pico_gb_serial_auto_import" />
+
+                <CheckBox
+                    android:id="@+id/cbPicoGbSerialAutoDeleteDuplicates"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxLines="2"
+                    android:text="@string/pico_gb_serial_auto_delete_duplicates" />
+
+                <EditText
+                    android:id="@+id/etPicoGbSerialImportTag"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/pico_gb_serial_import_tag_hint"
+                    android:inputType="text"
+                    android:maxLines="1" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <Button
+                    android:id="@+id/btnSelectAllPicoGbSerialBuffer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/pico_gb_serial_select_all" />
+
+                <Button
+                    android:id="@+id/btnImportPicoGbSerialBuffer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:backgroundTint="#4EBF52"
+                    android:text="@string/pico_gb_serial_import_buffer" />
+
+                <Button
+                    android:id="@+id/btnClearPicoGbSerialBuffer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:backgroundTint="#D64141"
+                    android:text="@string/pico_gb_serial_clear_buffer" />
+
+                <ImageView
+                    android:id="@+id/ivPicoGbSerialLastPreview"
+                    android:layout_width="120dp"
+                    android:layout_height="108dp"
+                    android:layout_gravity="end"
+                    android:adjustViewBounds="true"
+                    android:background="#D5D5D5"
+                    android:scaleType="fitCenter" />
             </LinearLayout>
         </LinearLayout>
 

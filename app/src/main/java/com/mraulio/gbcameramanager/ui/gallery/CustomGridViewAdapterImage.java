@@ -42,6 +42,7 @@ public class CustomGridViewAdapterImage extends ArrayAdapter<GbcImage> {
     private List<Bitmap> images;
     private boolean checkDuplicate;
     private boolean showInfo, multiSelect;
+    private boolean positionSelection;
     private List<Integer> selectedImages;
 
     public CustomGridViewAdapterImage(Context context, int layoutResourceId,
@@ -56,6 +57,14 @@ public class CustomGridViewAdapterImage extends ArrayAdapter<GbcImage> {
         this.showInfo = showInfo;
         this.multiSelect = multiSelect;
         this.selectedImages = selectedImages;
+    }
+
+    public CustomGridViewAdapterImage(Context context, int layoutResourceId,
+                                      List<GbcImage> data, List<Bitmap> images, boolean checkDuplicate,
+                                      boolean showInfo, boolean multiSelect, List<Integer> selectedImages,
+                                      boolean positionSelection) {
+        this(context, layoutResourceId, data, images, checkDuplicate, showInfo, multiSelect, selectedImages);
+        this.positionSelection = positionSelection;
     }
 
     @Override
@@ -84,9 +93,12 @@ public class CustomGridViewAdapterImage extends ArrayAdapter<GbcImage> {
         String name = data.get(position).getName();
         String hash = data.get(position).getHashCode();
         List<String> hashToCheck = new ArrayList<>();
-        if (multiSelect && selectedImages != null && !selectedImages.isEmpty()) {
-            for (int i : selectedImages) {
-                hashToCheck.add(GalleryFragment.filteredGbcImages.get(i).getHashCode());
+        if (multiSelect && selectedImages != null) {
+            if (!selectedImages.isEmpty()) {
+                for (int i : selectedImages) {
+                    if (positionSelection && (i < 0 || i >= data.size())) continue;
+                    hashToCheck.add(positionSelection ? data.get(i).getHashCode() : GalleryFragment.filteredGbcImages.get(i).getHashCode());
+                }
             }
             int nightModeFlags = context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
             boolean att = nightModeFlags == Configuration.UI_MODE_NIGHT_YES;

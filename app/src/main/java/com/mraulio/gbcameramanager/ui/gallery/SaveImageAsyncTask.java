@@ -28,6 +28,7 @@ public class SaveImageAsyncTask extends AsyncTask<Void, Void, Void> {
     int numImagesAdded;
     CustomGridViewAdapterImage customGridViewAdapterImage;
     LoadingDialog loadDialogSave;
+    boolean quiet;
 
     public SaveImageAsyncTask(List<GbcImage> gbcImagesList, List<Bitmap> bitmapList, Context context, TextView tvFileName,
                               int numImagesAdded, CustomGridViewAdapterImage customGridViewAdapterImage, LoadingDialog loadDialogSave) {
@@ -38,6 +39,12 @@ public class SaveImageAsyncTask extends AsyncTask<Void, Void, Void> {
         this.numImagesAdded = numImagesAdded;
         this.customGridViewAdapterImage = customGridViewAdapterImage;
         this.loadDialogSave = loadDialogSave;
+    }
+
+    public SaveImageAsyncTask(List<GbcImage> gbcImagesList, List<Bitmap> bitmapList, Context context, TextView tvFileName,
+                              int numImagesAdded, CustomGridViewAdapterImage customGridViewAdapterImage, LoadingDialog loadDialogSave, boolean quiet) {
+        this(gbcImagesList, bitmapList, context, tvFileName, numImagesAdded, customGridViewAdapterImage, loadDialogSave);
+        this.quiet = quiet;
     }
 
     @Override
@@ -74,11 +81,15 @@ public class SaveImageAsyncTask extends AsyncTask<Void, Void, Void> {
         if (tvFileName != null) {
             tvFileName.setText(numImagesAdded + context.getString(R.string.done_adding_images));
         }
-        loadDialogSave.dismissDialog();
+        if (loadDialogSave != null) {
+            loadDialogSave.dismissDialog();
+        }
         retrieveTags(gbcImagesListToSave);
         checkSorting(context);
         GalleryFragment gf = new GalleryFragment();
         gf.updateFromMain(context);
-        Utils.toast(context, context.getString(R.string.images_added) + numImagesAdded);
+        if (!quiet) {
+            Utils.toast(context, context.getString(R.string.images_added) + numImagesAdded);
+        }
     }
 }
