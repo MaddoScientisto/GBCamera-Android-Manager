@@ -20,10 +20,8 @@ import static com.mraulio.gbcameramanager.utils.Utils.saveTypeNames;
 import static com.mraulio.gbcameramanager.utils.Utils.transparencyHashSet;
 
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
-import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -32,11 +30,9 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 import android.os.Bundle;
 
-import androidx.activity.result.ActivityResult;
-import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.Nullable;
@@ -557,7 +553,7 @@ public class ImportFragment extends Fragment {
         }
     }
 
-    private class loadDataTask extends AsyncTask<Void, Void, Void> {
+    private class loadDataTask extends AppTask<Void, Void, Void> {
 
         @Override
         protected Void doInBackground(Void... voids) {
@@ -696,7 +692,7 @@ public class ImportFragment extends Fragment {
     }
 
 
-    private class SavePaletteAsyncTask extends AsyncTask<Void, Void, Void> {
+    private class SavePaletteAsyncTask extends AppTask<Void, Void, Void> {
         List<GbcPalette> gbcPalettesList;
 
         public SavePaletteAsyncTask(List<GbcPalette> gbcPalettesList) {
@@ -719,7 +715,7 @@ public class ImportFragment extends Fragment {
         }
     }
 
-    public static class SaveFrameAsyncTask extends AsyncTask<Void, Void, Void> {
+    public static class SaveFrameAsyncTask extends AppTask<Void, Void, Void> {
         List<GbcFrame> gbcFramesList;
         Context context;
 
@@ -752,9 +748,7 @@ public class ImportFragment extends Fragment {
     }
 
     public void chooseFile() {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("*/*");//Any type of file
-        startActivityForResult(Intent.createChooser(intent, getString(R.string.btn_select_file)), 123);
+        openFileDialog(null);
     }
 
     /**
@@ -763,14 +757,7 @@ public class ImportFragment extends Fragment {
      * @param view
      */
     public void openFileDialog(View view) {
-        Intent data = new Intent(Intent.ACTION_GET_CONTENT);
-        data.addCategory(Intent.CATEGORY_OPENABLE);
-
-        data.setType("*/*");
-        data.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-
-        data = Intent.createChooser(data, "Choose a file");
-        sActivityResultLauncher.launch(data);
+        openDocumentLauncher.launch(new String[]{"*/*"});
     }
 
     //Method to get the filename, because the uri sometimes ended with a number
@@ -797,116 +784,89 @@ public class ImportFragment extends Fragment {
         return result;
     }
 
-    ActivityResultLauncher<Intent> sActivityResultLauncher = registerForActivityResult(
-            new ActivityResultContracts.StartActivityForResult(),
-            new ActivityResultCallback<ActivityResult>() {
-                @Override
-                public void onActivityResult(ActivityResult result) {
-                    if (result.getResultCode() == Activity.RESULT_OK) {
-                        cbAddFrame.setVisibility(View.GONE);
-                        lyNewPalette.setVisibility(View.GONE);
-                        btnTransform.setVisibility(View.GONE);
-                        cbAddFrame.setChecked(false);
-                        Intent data = result.getData();
-
-                        if (data != null) {
-                            if (data.getClipData() != null) {
-                                // Multiple files were selected
-                                int count = data.getClipData().getItemCount();
-                                boolean allFilesValid = true;
-
-                                for (int i = 0; i < count; i++) {
-                                    Uri uri = data.getClipData().getItemAt(i).getUri();
-
-                                    //Verify if it's a valid image
-                                    if (!isImageFile(getFileName(uri))) {
-                                        allFilesValid = false;
-                                        break; //Leave the loop if it finds a non valid file
-                                    }
-                                }
-
-                                if (allFilesValid) {
-                                    List<Uri> uris = new ArrayList<>();
-
-                                    //Order by name
-                                    for (int i = 0; i < count; i++) {
-                                        Uri uri = data.getClipData().getItemAt(i).getUri();
-                                        uris.add(uri);
-                                    }
-                                    Collections.sort(uris, new Comparator<Uri>() {
-                                        @Override
-                                        public int compare(Uri uri1, Uri uri2) {
-                                            String path1 = getFileName(uri1);
-                                            String path2 = getFileName(uri2);
-
-                                            return path1.compareTo(path2);
-                                        }
-                                    });
-
-                                    finalListImages.clear();
-                                    finalListBitmaps.clear();
-                                    tvFileName.setText("Selected files: " + count);
-                                    for (int i = 0; i < count; i++) {
-                                        Uri uri = uris.get(i);
-
-                                        fileName = getFileName(uri);
-                                        fileType = FILE_TYPE.IMAGE;
-                                        selectedFile = null;//Passing it as null to not get the name and modified date
-                                        try {
-                                            InputStream inputStream = getContext().getContentResolver().openInputStream(uri);
-
-                                            BitmapFactory.Options options = new BitmapFactory.Options();
-                                            options.inJustDecodeBounds = true;
-                                            Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
-
-                                            GbcImage gbcImage = new GbcImage();
-                                            bitmap = resizeImage(bitmap, gbcImage, true);
-
-
-                                            byte[] imageBytes = Utils.encodeImage(bitmap, "bw");
-                                            gbcImage.setImageBytes(imageBytes);
-                                            byte[] hash = MessageDigest.getInstance("SHA-256").digest(imageBytes);
-                                            String hashHex = Utils.bytesToHex(hash);
-                                            gbcImage.setHashCode(hashHex);
-
-                                            gbcImage.setName(fileName);
-                                            finalListBitmaps.add(bitmap);
-                                            finalListImages.add(gbcImage);
-//
-                                        } catch (IOException e) {
-                                            e.printStackTrace();
-                                        } catch (NoSuchAlgorithmException e) {
-                                            e.printStackTrace();
-                                        } catch (Exception e) {
-                                            e.printStackTrace();
-                                        }
-
-                                    }
-                                    btnExtractFile.setVisibility(View.GONE);
-                                    spSaveType.setVisibility(View.GONE);
-                                    btnAddImages.setVisibility(View.VISIBLE);
-                                    btnAddImages.setEnabled(true);
-                                    adapter = new CustomGridViewAdapterImage(getContext(), R.layout.row_items, finalListImages, finalListBitmaps, true, true, false, null);
-                                    gridViewImport.setAdapter((ListAdapter) adapter);
-                                    ImportFragment.addEnum = ImportFragment.ADD_WHAT.IMAGES;
-                                    gridViewImport.setAdapter((ListAdapter) adapter);
-
-                                } else {
-                                    // Show error message
-                                    tvFileName.setText(getString(R.string.import_valid_images));
-
-                                }
-                            } else if (data.getData() != null) {
-                                uri = data.getData();
-                                selectedFile = DocumentFile.fromSingleUri(getContext(), uri);
-                                fileName = getFileName(uri);
-                                readFileData(uri);
-                            }
-                        }
-                    }
-                }
-            }
+    ActivityResultLauncher<String[]> openDocumentLauncher = registerForActivityResult(
+            new ActivityResultContracts.OpenMultipleDocuments(),
+            this::handleSelectedDocuments
     );
+
+    private void handleSelectedDocuments(List<Uri> selectedUris) {
+        if (selectedUris == null || selectedUris.isEmpty()) {
+            return;
+        }
+
+        cbAddFrame.setVisibility(View.GONE);
+        lyNewPalette.setVisibility(View.GONE);
+        btnTransform.setVisibility(View.GONE);
+        cbAddFrame.setChecked(false);
+
+        if (selectedUris.size() == 1) {
+            uri = selectedUris.get(0);
+            selectedFile = DocumentFile.fromSingleUri(getContext(), uri);
+            fileName = getFileName(uri);
+            readFileData(uri);
+            return;
+        }
+
+        for (Uri selectedUri : selectedUris) {
+            if (!isImageFile(getFileName(selectedUri))) {
+                tvFileName.setText(getString(R.string.import_valid_images));
+                return;
+            }
+        }
+
+        List<Uri> uris = new ArrayList<>(selectedUris);
+        Collections.sort(uris, new Comparator<Uri>() {
+            @Override
+            public int compare(Uri uri1, Uri uri2) {
+                String path1 = getFileName(uri1);
+                String path2 = getFileName(uri2);
+
+                return path1.compareTo(path2);
+            }
+        });
+
+        finalListImages.clear();
+        finalListBitmaps.clear();
+        tvFileName.setText("Selected files: " + uris.size());
+        for (Uri selectedUri : uris) {
+            fileName = getFileName(selectedUri);
+            fileType = FILE_TYPE.IMAGE;
+            selectedFile = null;//Passing it as null to not get the name and modified date
+            try {
+                InputStream inputStream = getContext().getContentResolver().openInputStream(selectedUri);
+
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inJustDecodeBounds = true;
+                Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+
+                GbcImage gbcImage = new GbcImage();
+                bitmap = resizeImage(bitmap, gbcImage, true);
+
+                byte[] imageBytes = Utils.encodeImage(bitmap, "bw");
+                gbcImage.setImageBytes(imageBytes);
+                byte[] hash = MessageDigest.getInstance("SHA-256").digest(imageBytes);
+                String hashHex = Utils.bytesToHex(hash);
+                gbcImage.setHashCode(hashHex);
+
+                gbcImage.setName(fileName);
+                finalListBitmaps.add(bitmap);
+                finalListImages.add(gbcImage);
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (NoSuchAlgorithmException e) {
+                e.printStackTrace();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        btnExtractFile.setVisibility(View.GONE);
+        spSaveType.setVisibility(View.GONE);
+        btnAddImages.setVisibility(View.VISIBLE);
+        btnAddImages.setEnabled(true);
+        adapter = new CustomGridViewAdapterImage(getContext(), R.layout.row_items, finalListImages, finalListBitmaps, true, true, false, null);
+        gridViewImport.setAdapter((ListAdapter) adapter);
+        ImportFragment.addEnum = ImportFragment.ADD_WHAT.IMAGES;
+    }
 
     private void readFileData(Uri uri) {
 

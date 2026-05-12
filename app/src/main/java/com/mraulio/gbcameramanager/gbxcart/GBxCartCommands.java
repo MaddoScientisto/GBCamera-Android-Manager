@@ -11,7 +11,7 @@ import static com.mraulio.gbcameramanager.ui.usbserial.UsbSerialFragment.showIma
 import static com.mraulio.gbcameramanager.ui.usbserial.UsbSerialUtils.magicIsReal;
 
 import android.content.Context;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 import android.os.Build;
 import android.util.Log;
 import android.view.View;
@@ -357,7 +357,7 @@ public class GBxCartCommands {
         }
     }
 
-    public static class ReadPHOTORomAsyncTask extends AsyncTask<Void, Integer, Void> {
+    public static class ReadPHOTORomAsyncTask extends AppTask<Void, Integer, Void> {
         private Context context;
         private TextView tv;
         private UsbSerialPort port;
@@ -559,7 +559,7 @@ public class GBxCartCommands {
         }
     }
 
-    public static class ReadRamAsyncTask extends AsyncTask<Void, Integer, Void> {
+    public static class ReadRamAsyncTask extends AppTask<Void, Integer, Void> {
         private Context context;
         private TextView tv;
         private UsbSerialPort port;

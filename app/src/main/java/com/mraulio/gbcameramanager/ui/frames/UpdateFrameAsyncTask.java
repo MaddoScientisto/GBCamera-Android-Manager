@@ -1,12 +1,12 @@
 package com.mraulio.gbcameramanager.ui.frames;
 
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 
 import com.mraulio.gbcameramanager.db.FrameDao;
 import com.mraulio.gbcameramanager.model.GbcFrame;
 import com.mraulio.gbcameramanager.utils.StaticValues;
 
-public class UpdateFrameAsyncTask extends AsyncTask<Void, Void, Void> {
+public class UpdateFrameAsyncTask extends AppTask<Void, Void, Void> {
 
     private GbcFrame gbcFrame;
 

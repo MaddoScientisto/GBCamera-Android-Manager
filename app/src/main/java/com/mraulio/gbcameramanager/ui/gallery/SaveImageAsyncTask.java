@@ -5,7 +5,7 @@ import static com.mraulio.gbcameramanager.utils.Utils.retrieveTags;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 import android.widget.TextView;
 
 import com.mraulio.gbcameramanager.R;
@@ -20,7 +20,7 @@ import com.mraulio.gbcameramanager.utils.Utils;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SaveImageAsyncTask extends AsyncTask<Void, Void, Void> {
+public class SaveImageAsyncTask extends AppTask<Void, Void, Void> {
     List<GbcImage> gbcImagesListToSave;
     List<Bitmap> bitmapList;
     Context context;

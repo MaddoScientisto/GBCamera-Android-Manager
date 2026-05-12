@@ -12,7 +12,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 import android.os.Bundle;
 
 import androidx.fragment.app.Fragment;
@@ -191,7 +191,7 @@ public class SaveManagerFragment extends Fragment {
         return view;
     }
 
-    private class SaveImageAsyncTask extends AsyncTask<Void, Void, Void> {
+    private class SaveImageAsyncTask extends AppTask<Void, Void, Void> {
         List<GbcImage> gbcImagesList;
 
         public SaveImageAsyncTask(List<GbcImage> gbcImagesList) {
@@ -265,7 +265,7 @@ public class SaveManagerFragment extends Fragment {
     }
 
 
-    private class loadDataTask extends AsyncTask<Void, Void, Void> {
+    private class loadDataTask extends AppTask<Void, Void, Void> {
 
         @Override
         protected Void doInBackground(Void... voids) {

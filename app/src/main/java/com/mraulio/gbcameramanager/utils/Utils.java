@@ -8,6 +8,7 @@ import static com.mraulio.gbcameramanager.utils.DiskCache.CACHE_DIR_NAME;
 import static com.mraulio.gbcameramanager.utils.StaticValues.sortPalettesByUsage;
 import static com.mraulio.gbcameramanager.utils.StaticValues.timesPalettesUsed;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
@@ -15,7 +16,9 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ComponentName;
+import android.content.ContentResolver;
 import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -40,7 +43,10 @@ import android.widget.ListView;
 import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
+import androidx.documentfile.provider.DocumentFile;
+import androidx.sqlite.db.SupportSQLiteDatabase;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -52,13 +58,11 @@ import com.mraulio.gbcameramanager.model.GbcImage;
 import com.mraulio.gbcameramanager.model.GbcPalette;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.channels.FileChannel;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
@@ -79,26 +83,29 @@ import java.util.regex.Pattern;
  * Class with puclic static variables and methods that are shared alongside the app
  */
 public class Utils {
-    static File downloadDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-    static File picturesDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
+    private static final String MAIN_FOLDER_NAME = "GBCamera Manager";
+    private static final String DB_BACKUP_FOLDER_NAME = "DB Backup";
+    static File downloadDirectory = new File(".");
+    static File picturesDirectory = new File(".");
 
     public static int notificationId = 0;
-    public static final File MAIN_FOLDER = new File(downloadDirectory, "GBCamera Manager");
-    public static final File SAVE_FOLDER = new File(MAIN_FOLDER, "Save dumps");
-    public static final File IMAGES_FOLDER = new File(picturesDirectory, "GBCamera Manager");
-    public static final File IMAGES_JSON = new File(MAIN_FOLDER, "Images json");
-    public static final File TXT_FOLDER = new File(MAIN_FOLDER, "Hex images");
-    public static final File PALETTES_FOLDER = new File(MAIN_FOLDER, "Palettes json");
-    public static final File FRAMES_FOLDER = new File(MAIN_FOLDER, "Frames json");
-    public static final File ARDUINO_HEX_FOLDER = new File(MAIN_FOLDER, "Arduino Printer Hex");
-    public static final File PHOTO_DUMPS_FOLDER = new File(MAIN_FOLDER, "PHOTO Rom Dumps");
-    public static final File DB_BACKUP_FOLDER = new File(MAIN_FOLDER, "DB Backup");
+    public static File MAIN_FOLDER = new File(downloadDirectory, MAIN_FOLDER_NAME);
+    public static File SAVE_FOLDER = new File(MAIN_FOLDER, "Save dumps");
+    public static File IMAGES_FOLDER = new File(picturesDirectory, MAIN_FOLDER_NAME);
+    public static File IMAGES_JSON = new File(MAIN_FOLDER, "Images json");
+    public static File TXT_FOLDER = new File(MAIN_FOLDER, "Hex images");
+    public static File PALETTES_FOLDER = new File(MAIN_FOLDER, "Palettes json");
+    public static File FRAMES_FOLDER = new File(MAIN_FOLDER, "Frames json");
+    public static File ARDUINO_HEX_FOLDER = new File(MAIN_FOLDER, "Arduino Printer Hex");
+    public static File PHOTO_DUMPS_FOLDER = new File(MAIN_FOLDER, "PHOTO Rom Dumps");
+    public static File DB_BACKUP_FOLDER = new File(MAIN_FOLDER, DB_BACKUP_FOLDER_NAME);
     public static final String CHANNEL_ID = "gbcam_channel";
     public static final String CHANNEL_NAME = "GBCAM Channel";
 
     private static final String DB_NAME = "Database";
     private static final String DB_NAME_SHM = "Database-shm";
     private static final String DB_NAME_WAL = "Database-wal";
+    private static final String DB_BACKUP_TREE_URI_PREF = "db_backup_tree_uri";
     private static final int MIN_RESTORABLE_DB_VERSION = 5;
 
     public static LinkedHashMap<String, String> frameGroupsNames = new LinkedHashMap<>();
@@ -125,6 +132,62 @@ public class Utils {
         put("Japanese", "JP");
         put("Hello Kitty", "HK");
     }};
+
+    public static final class DatabaseBackupEntry {
+        private final String name;
+        private final int version;
+        private final File directory;
+        private final String relativePath;
+        private final DocumentFile documentDirectory;
+
+        DatabaseBackupEntry(String name, int version, File directory, String relativePath, DocumentFile documentDirectory) {
+            this.name = name;
+            this.version = version;
+            this.directory = directory;
+            this.relativePath = relativePath;
+            this.documentDirectory = documentDirectory;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public int getVersion() {
+            return version;
+        }
+
+        public File getDirectory() {
+            return directory;
+        }
+
+        public String getRelativePath() {
+            return relativePath;
+        }
+
+        public DocumentFile getDocumentDirectory() {
+            return documentDirectory;
+        }
+    }
+
+    public static void configureStorage(Context context) {
+        Context appContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+        File downloads = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+        File pictures = appContext.getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+
+        downloadDirectory = downloads != null ? downloads : appContext.getFilesDir();
+        picturesDirectory = pictures != null ? pictures : appContext.getFilesDir();
+
+        MAIN_FOLDER = new File(downloadDirectory, MAIN_FOLDER_NAME);
+        SAVE_FOLDER = new File(MAIN_FOLDER, "Save dumps");
+        IMAGES_FOLDER = new File(picturesDirectory, MAIN_FOLDER_NAME);
+        IMAGES_JSON = new File(MAIN_FOLDER, "Images json");
+        TXT_FOLDER = new File(MAIN_FOLDER, "Hex images");
+        PALETTES_FOLDER = new File(MAIN_FOLDER, "Palettes json");
+        FRAMES_FOLDER = new File(MAIN_FOLDER, "Frames json");
+        ARDUINO_HEX_FOLDER = new File(MAIN_FOLDER, "Arduino Printer Hex");
+        PHOTO_DUMPS_FOLDER = new File(MAIN_FOLDER, "PHOTO Rom Dumps");
+        DB_BACKUP_FOLDER = new File(MAIN_FOLDER, DB_BACKUP_FOLDER_NAME);
+    }
 
     //Auxiliary method to convert byte[] to hexadecimal String
     public static String bytesToHex(byte[] bytes) {
@@ -309,84 +372,88 @@ public class Utils {
     }
 
     public static void backupDatabase(Context context) {
-        if (!ensureLegacyStorageAccess(context)) {
-            return;
-        }
-
         try {
-            //Get the database version first.
-            int databaseVersion = StaticValues.db.getOpenHelper().getReadableDatabase().getVersion();
-
-            SimpleDateFormat sdf = new SimpleDateFormat(dateLocale + "_HH-mm-ss", Locale.getDefault());
-            Date date = new Date();
-            File backupDir = new File(DB_BACKUP_FOLDER + "/" + sdf.format(date) + "_v" + databaseVersion);
-
-            if (!backupDir.exists()) {
-                backupDir.mkdirs();
-            }
-
-            File dataDir = Environment.getDataDirectory();
-            File currentDB = new File(dataDir, "/data/" + context.getPackageName() + "/databases/" + DB_NAME);
-            File backupDB = new File(backupDir, DB_NAME);
-            File currentDB_shm = new File(dataDir, "/data/" + context.getPackageName() + "/databases/" + DB_NAME_SHM);
-            File backupDB_shm = new File(backupDir, DB_NAME_SHM);
-            File currentDB_wal = new File(dataDir, "/data/" + context.getPackageName() + "/databases/" + DB_NAME_WAL);
-            File backupDB_wal = new File(backupDir, DB_NAME_WAL);
-
-            FileChannel src = new FileInputStream(currentDB).getChannel();
-            FileChannel dst = new FileOutputStream(backupDB).getChannel();
-            dst.transferFrom(src, 0, src.size());
-            src.close();
-            dst.close();
-
-            src = new FileInputStream(currentDB_shm).getChannel();
-            dst = new FileOutputStream(backupDB_shm).getChannel();
-            dst.transferFrom(src, 0, src.size());
-            src.close();
-            dst.close();
-
-            src = new FileInputStream(currentDB_wal).getChannel();
-            dst = new FileOutputStream(backupDB_wal).getChannel();
-            dst.transferFrom(src, 0, src.size());
-            src.close();
-            dst.close();
-
-            toast(context, context.getString(R.string.toast_backup_db) + "\nVersion: " + databaseVersion);
+            DatabaseBackupEntry backupEntry = createDatabaseBackup(context);
+            toast(context, context.getString(R.string.toast_backup_db) + "\nVersion: " + backupEntry.getVersion());
         } catch (IOException e) {
             e.printStackTrace();
             toast(context, "Error creating DB backup");
         }
     }
 
-    public static void showDbBackups(Context context, Activity activity) {
-        if (!ensureLegacyStorageAccess(context)) {
+    public static DatabaseBackupEntry createDatabaseBackup(Context context) throws IOException {
+        int databaseVersion = StaticValues.db.getOpenHelper().getReadableDatabase().getVersion();
+        checkpointDatabase();
+
+        SimpleDateFormat sdf = new SimpleDateFormat(getBackupDatePattern() + "_HH-mm-ss-SSS", Locale.getDefault());
+        Date date = new Date();
+        String backupName = sdf.format(date) + "_v" + databaseVersion;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            DatabaseBackupEntry backupEntry = new DatabaseBackupEntry(
+                    backupName,
+                    databaseVersion,
+                    null,
+                    getSharedBackupRelativePath(backupName),
+                    null
+            );
+            writeDatabaseBackupToSharedDownloads(context, backupEntry, getDatabaseFiles(context));
+            return backupEntry;
+        }
+
+        File backupDir = new File(getLegacySharedBackupRoot(), backupName);
+        if (!backupDir.exists() && !backupDir.mkdirs()) {
+            throw new IOException("Unable to create backup directory: " + backupDir);
+        }
+
+        copyDatabaseFamily(getDatabaseFiles(context), getBackupFiles(backupDir), false);
+        return new DatabaseBackupEntry(backupName, databaseVersion, backupDir, null, null);
+    }
+
+    private static String getBackupDatePattern() {
+        return dateLocale == null || dateLocale.isEmpty() ? "yyyy-MM-dd" : dateLocale;
+    }
+
+    private static void checkpointDatabase() {
+        if (StaticValues.db == null || !StaticValues.db.isOpen()) {
             return;
+        }
+
+        SupportSQLiteDatabase database = StaticValues.db.getOpenHelper().getWritableDatabase();
+        Cursor cursor = database.query("PRAGMA wal_checkpoint(FULL)");
+        cursor.close();
+    }
+
+    public static boolean showDbBackups(Context context, Activity activity) {
+        if (!ensureAutomaticDownloadsBackupAccess(context)) {
+            return true;
         }
 
         // Show backups that the current Room schema can migrate from.
         int databaseVersion = StaticValues.db.getOpenHelper().getReadableDatabase().getVersion();
 
-        File directory = new File(DB_BACKUP_FOLDER.toURI());
-
-        final List<File> directories = new ArrayList<>();
-        File[] files = directory.listFiles();
-        final List<String> directoriesNames = new ArrayList<>();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isDirectory()) {
-                    int backupVersion = getBackupDatabaseVersion(file);
-                    if (isBackupVersionRestorable(backupVersion, databaseVersion)) {
-                        directories.add(file);
-                        directoriesNames.add(file.getName());
-                    }
-                }
+        List<DatabaseBackupEntry> availableDirectories = listDatabaseBackups(context, databaseVersion);
+        if (availableDirectories.isEmpty()) {
+            Uri persistedTreeUri = getStoredBackupTreeUri();
+            if (persistedTreeUri != null) {
+                availableDirectories = listDocumentTreeBackups(context, persistedTreeUri, databaseVersion);
             }
+        }
+
+        if (availableDirectories.isEmpty()) {
+            return false;
+        }
+
+        final List<DatabaseBackupEntry> directories = availableDirectories;
+        final List<String> directoriesNames = new ArrayList<>();
+        for (DatabaseBackupEntry entry : directories) {
+            directoriesNames.add(entry.getName());
         }
 
         final Dialog dialog = new Dialog(context);
         dialog.setContentView(R.layout.restore_db_dialog);
 
-        final File[] selectedDirectory = {null};
+        final DatabaseBackupEntry[] selectedDirectory = {null};
         ArrayAdapter<String> adapter = new ArrayAdapter<>(context, android.R.layout.simple_list_item_1, directoriesNames);
         ListView listView = dialog.findViewById(R.id.listViewRestoreDb);
         listView.setAdapter(adapter);
@@ -429,11 +496,35 @@ public class Utils {
                 selectedDirectory[0] = directories.get(position);
             }
         });
+
+        return true;
+    }
+
+    public static void persistBackupTreeUri(Context context, Uri treeUri) {
+        if (treeUri == null) {
+            return;
+        }
+
+        int flags = Intent.FLAG_GRANT_READ_URI_PERMISSION;
+        context.getContentResolver().takePersistableUriPermission(treeUri, flags);
+        sharedPreferences.edit().putString(DB_BACKUP_TREE_URI_PREF, treeUri.toString()).apply();
+    }
+
+    public static Uri getStoredBackupTreeUri() {
+        String treeUri = sharedPreferences.getString(DB_BACKUP_TREE_URI_PREF, "");
+        if (treeUri == null || treeUri.isEmpty()) {
+            return null;
+        }
+        return Uri.parse(treeUri);
     }
 
     private static int getBackupDatabaseVersion(File backupDirectory) {
+        return getBackupDatabaseVersion(backupDirectory.getName());
+    }
+
+    private static int getBackupDatabaseVersion(String backupName) {
         Pattern pattern = Pattern.compile("_v(\\d+)$");
-        Matcher matcher = pattern.matcher(backupDirectory.getName());
+        Matcher matcher = pattern.matcher(backupName);
         if (!matcher.find()) {
             return -1;
         }
@@ -445,19 +536,169 @@ public class Utils {
         return backupVersion >= MIN_RESTORABLE_DB_VERSION && backupVersion <= currentDatabaseVersion;
     }
 
-    public static void restoreDatabase(Context context, File backupDir, Activity activity) {
-        try {
-            File dataDir = Environment.getDataDirectory();
-            File currentDB = new File(dataDir, "/data/" + context.getPackageName() + "/databases/" + DB_NAME);
-            File backupDB = new File(backupDir, DB_NAME);
-            File currentDB_shm = new File(dataDir, "/data/" + context.getPackageName() + "/databases/" + DB_NAME_SHM);
-            File backupDB_shm = new File(backupDir, DB_NAME_SHM);
-            File currentDB_wal = new File(dataDir, "/data/" + context.getPackageName() + "/databases/" + DB_NAME_WAL);
-            File backupDB_wal = new File(backupDir, DB_NAME_WAL);
+    public static List<DatabaseBackupEntry> listDatabaseBackups(Context context, int currentDatabaseVersion) {
+        List<DatabaseBackupEntry> entries = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                ? listSharedDownloadBackups(context)
+                : listLegacySharedBackups();
+        List<DatabaseBackupEntry> filtered = new ArrayList<>();
+        for (DatabaseBackupEntry entry : entries) {
+            if (isBackupVersionRestorable(entry.getVersion(), currentDatabaseVersion)) {
+                filtered.add(entry);
+            }
+        }
+        Collections.sort(filtered, new Comparator<DatabaseBackupEntry>() {
+            @Override
+            public int compare(DatabaseBackupEntry left, DatabaseBackupEntry right) {
+                return right.getName().compareTo(left.getName());
+            }
+        });
+        return filtered;
+    }
 
-            copyBackupFile(context, backupDB, currentDB);
-            copyBackupFile(context, backupDB_shm, currentDB_shm);
-            copyBackupFile(context, backupDB_wal, currentDB_wal);
+    private static boolean ensureAutomaticDownloadsBackupAccess(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+            return true;
+        }
+
+        Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+        intent.setData(Uri.parse("package:" + context.getPackageName()));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (intent.resolveActivity(context.getPackageManager()) == null) {
+            intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        }
+
+        context.startActivity(intent);
+        toast(context, context.getString(R.string.toast_manage_storage_db));
+        return false;
+    }
+
+    private static List<DatabaseBackupEntry> listLegacySharedBackups() {
+        List<DatabaseBackupEntry> entries = new ArrayList<>();
+        File[] files = getLegacySharedBackupRoot().listFiles();
+        if (files == null) {
+            return entries;
+        }
+        for (File file : files) {
+            if (file.isDirectory()) {
+                entries.add(new DatabaseBackupEntry(file.getName(), getBackupDatabaseVersion(file), file, null, null));
+            }
+        }
+        return entries;
+    }
+
+    private static List<DatabaseBackupEntry> listSharedDownloadBackups(Context context) {
+        LinkedHashMap<String, DatabaseBackupEntry> entries = new LinkedHashMap<>();
+        ContentResolver resolver = context.getContentResolver();
+        Uri collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+        String[] projection = new String[]{
+                MediaStore.Files.FileColumns.DISPLAY_NAME,
+                MediaStore.Files.FileColumns.RELATIVE_PATH
+        };
+        String selection = MediaStore.Files.FileColumns.RELATIVE_PATH + " LIKE ? AND "
+                + MediaStore.Files.FileColumns.DISPLAY_NAME + " IN (?, ?, ?)";
+        String[] selectionArgs = new String[]{getSharedBackupRelativeRoot() + "%", DB_NAME, DB_NAME_SHM, DB_NAME_WAL};
+
+        try (Cursor cursor = resolver.query(collection, projection, selection, selectionArgs, null)) {
+            if (cursor == null) {
+                return new ArrayList<>();
+            }
+
+            int displayNameIndex = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME);
+            int relativePathIndex = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.RELATIVE_PATH);
+            while (cursor.moveToNext()) {
+                cursor.getString(displayNameIndex);
+                String relativePath = cursor.getString(relativePathIndex);
+                if (relativePath == null || !relativePath.startsWith(getSharedBackupRelativeRoot())) {
+                    continue;
+                }
+
+                String folderName = getBackupFolderNameFromRelativePath(relativePath);
+                if (folderName == null) {
+                    continue;
+                }
+
+                if (!entries.containsKey(folderName)) {
+                    entries.put(folderName, new DatabaseBackupEntry(
+                            folderName,
+                            getBackupDatabaseVersion(folderName),
+                            null,
+                            getSharedBackupRelativePath(folderName),
+                            null
+                    ));
+                }
+            }
+        }
+
+        return new ArrayList<>(entries.values());
+    }
+
+    private static List<DatabaseBackupEntry> listDocumentTreeBackups(Context context, Uri treeUri, int currentDatabaseVersion) {
+        List<DatabaseBackupEntry> entries = new ArrayList<>();
+        DocumentFile rootDirectory = resolveBackupTreeDirectory(context, treeUri);
+        if (rootDirectory == null || !rootDirectory.isDirectory()) {
+            return entries;
+        }
+
+        for (DocumentFile documentFile : rootDirectory.listFiles()) {
+            if (!documentFile.isDirectory()) {
+                continue;
+            }
+
+            int backupVersion = getBackupDatabaseVersion(documentFile.getName());
+            if (isBackupVersionRestorable(backupVersion, currentDatabaseVersion)) {
+                entries.add(new DatabaseBackupEntry(documentFile.getName(), backupVersion, null, null, documentFile));
+            }
+        }
+
+        Collections.sort(entries, new Comparator<DatabaseBackupEntry>() {
+            @Override
+            public int compare(DatabaseBackupEntry left, DatabaseBackupEntry right) {
+                return right.getName().compareTo(left.getName());
+            }
+        });
+        return entries;
+    }
+
+    private static DocumentFile resolveBackupTreeDirectory(Context context, Uri treeUri) {
+        DocumentFile rootDirectory = DocumentFile.fromTreeUri(context, treeUri);
+        if (rootDirectory == null) {
+            return null;
+        }
+
+        if (containsBackupDirectories(rootDirectory)) {
+            return rootDirectory;
+        }
+
+        DocumentFile nestedBackupDirectory = rootDirectory.findFile(DB_BACKUP_FOLDER_NAME);
+        if (nestedBackupDirectory != null && nestedBackupDirectory.isDirectory()) {
+            return nestedBackupDirectory;
+        }
+
+        return rootDirectory;
+    }
+
+    private static boolean containsBackupDirectories(DocumentFile rootDirectory) {
+        for (DocumentFile child : rootDirectory.listFiles()) {
+            if (child.isDirectory() && getBackupDatabaseVersion(child.getName()) >= 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String getBackupFolderNameFromRelativePath(String relativePath) {
+        String remainder = relativePath.substring(getSharedBackupRelativeRoot().length());
+        int slashIndex = remainder.indexOf('/');
+        if (slashIndex <= 0) {
+            return null;
+        }
+        return remainder.substring(0, slashIndex);
+    }
+
+    public static void restoreDatabase(Context context, DatabaseBackupEntry backupEntry, Activity activity) {
+        try {
+            restoreDatabaseFiles(context, backupEntry);
 
             //Clear shared preferences and cache
             SharedPreferences.Editor editor = sharedPreferences.edit();
@@ -472,52 +713,142 @@ public class Utils {
         }
     }
 
-    private static void copyBackupFile(Context context, File backupFile, File destinationFile) throws IOException {
-        try (InputStream inputStream = openBackupInputStream(context, backupFile);
-             OutputStream outputStream = new FileOutputStream(destinationFile)) {
+    public static void restoreDatabaseFiles(Context context, DatabaseBackupEntry backupEntry) throws IOException {
+        if (StaticValues.db != null && StaticValues.db.isOpen()) {
+            checkpointDatabase();
+            StaticValues.db.close();
+        }
+
+        if (backupEntry.getDirectory() != null) {
+            File backupDB = new File(backupEntry.getDirectory(), DB_NAME);
+            if (!backupDB.isFile()) {
+                throw new IOException("Backup is missing database file: " + backupDB);
+            }
+            copyDatabaseFamily(getBackupFiles(backupEntry.getDirectory()), getDatabaseFiles(context), true);
+            return;
+        }
+
+        if (backupEntry.getDocumentDirectory() != null) {
+            copyDatabaseFamilyFromDocumentTree(context, backupEntry, getDatabaseFiles(context), true);
+            return;
+        }
+
+        copyDatabaseFamilyFromSharedDownloads(context, backupEntry, getDatabaseFiles(context), true);
+    }
+
+    private static File[] getDatabaseFiles(Context context) {
+        File currentDB = context.getDatabasePath(DB_NAME);
+        return new File[]{
+                currentDB,
+                new File(currentDB.getParentFile(), DB_NAME_SHM),
+                new File(currentDB.getParentFile(), DB_NAME_WAL)
+        };
+    }
+
+    private static File[] getBackupFiles(File backupDir) {
+        return new File[]{
+                new File(backupDir, DB_NAME),
+                new File(backupDir, DB_NAME_SHM),
+                new File(backupDir, DB_NAME_WAL)
+        };
+    }
+
+    private static File getLegacySharedBackupRoot() {
+        File downloadsRoot = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        return new File(downloadsRoot, MAIN_FOLDER_NAME + File.separator + DB_BACKUP_FOLDER_NAME);
+    }
+
+    private static String getSharedBackupRelativeRoot() {
+        return Environment.DIRECTORY_DOWNLOADS + "/" + MAIN_FOLDER_NAME + "/" + DB_BACKUP_FOLDER_NAME + "/";
+    }
+
+    private static String getSharedBackupRelativePath(String backupName) {
+        return getSharedBackupRelativeRoot() + backupName + "/";
+    }
+
+    private static void writeDatabaseBackupToSharedDownloads(Context context, DatabaseBackupEntry backupEntry, File[] sourceFiles) throws IOException {
+        for (int i = 0; i < sourceFiles.length; i++) {
+            File sourceFile = sourceFiles[i];
+            if (!sourceFile.exists()) {
+                continue;
+            }
+            writeFileToSharedDownloads(context, sourceFile, backupEntry.getRelativePath(), sourceFile.getName());
+        }
+    }
+
+    private static void writeFileToSharedDownloads(Context context, File sourceFile, String relativePath, String displayName) throws IOException {
+        ContentResolver resolver = context.getContentResolver();
+        Uri collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Files.FileColumns.DISPLAY_NAME, displayName);
+        values.put(MediaStore.Files.FileColumns.MIME_TYPE, "application/octet-stream");
+        values.put(MediaStore.Files.FileColumns.RELATIVE_PATH, relativePath);
+        values.put(MediaStore.Files.FileColumns.IS_PENDING, 1);
+
+        Uri uri = resolver.insert(collection, values);
+        if (uri == null) {
+            throw new IOException("Unable to create backup file in shared downloads");
+        }
+
+        try (InputStream inputStream = new FileInputStream(sourceFile);
+             OutputStream outputStream = resolver.openOutputStream(uri, "w")) {
+            if (outputStream == null) {
+                throw new IOException("Unable to open backup file for writing: " + uri);
+            }
             byte[] buffer = new byte[8192];
             int bytesRead;
             while ((bytesRead = inputStream.read(buffer)) != -1) {
                 outputStream.write(buffer, 0, bytesRead);
             }
             outputStream.flush();
+        } finally {
+            ContentValues publishValues = new ContentValues();
+            publishValues.put(MediaStore.Files.FileColumns.IS_PENDING, 0);
+            resolver.update(uri, publishValues, null, null);
         }
     }
 
-    private static InputStream openBackupInputStream(Context context, File backupFile) throws IOException {
-        try {
-            return new FileInputStream(backupFile);
-        } catch (FileNotFoundException exception) {
-            Uri mediaStoreUri = getMediaStoreUriForBackupFile(context, backupFile);
-            if (mediaStoreUri == null) {
-                throw exception;
+    private static void copyDatabaseFamilyFromSharedDownloads(Context context, DatabaseBackupEntry backupEntry, File[] destinationFiles, boolean deleteMissingSideFiles) throws IOException {
+        for (int i = 0; i < destinationFiles.length; i++) {
+            Uri sourceUri = findSharedBackupFileUri(context, backupEntry.getRelativePath(), destinationFiles[i].getName());
+            if (sourceUri == null) {
+                if (i == 0) {
+                    throw new IOException("Backup is missing database file: " + destinationFiles[i].getName());
+                }
+                if (deleteMissingSideFiles && destinationFiles[i].exists() && !destinationFiles[i].delete()) {
+                    throw new IOException("Unable to delete stale database side file: " + destinationFiles[i]);
+                }
+                continue;
             }
-
-            InputStream inputStream = context.getContentResolver().openInputStream(mediaStoreUri);
-            if (inputStream == null) {
-                throw exception;
-            }
-            return inputStream;
+            copyUriToFile(context, sourceUri, destinationFiles[i]);
         }
     }
 
-    private static Uri getMediaStoreUriForBackupFile(Context context, File backupFile) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            return null;
+    private static void copyDatabaseFamilyFromDocumentTree(Context context, DatabaseBackupEntry backupEntry, File[] destinationFiles, boolean deleteMissingSideFiles) throws IOException {
+        for (int i = 0; i < destinationFiles.length; i++) {
+            DocumentFile sourceFile = backupEntry.getDocumentDirectory().findFile(destinationFiles[i].getName());
+            if (sourceFile == null || !sourceFile.isFile()) {
+                if (i == 0) {
+                    throw new IOException("Backup is missing database file: " + destinationFiles[i].getName());
+                }
+                if (deleteMissingSideFiles && destinationFiles[i].exists() && !destinationFiles[i].delete()) {
+                    throw new IOException("Unable to delete stale database side file: " + destinationFiles[i]);
+                }
+                continue;
+            }
+            copyUriToFile(context, sourceFile.getUri(), destinationFiles[i]);
         }
+    }
 
-        String relativePath = getRelativeMediaStorePath(backupFile);
-        if (relativePath == null) {
-            return null;
-        }
-
+    private static Uri findSharedBackupFileUri(Context context, String relativePath, String displayName) {
+        ContentResolver resolver = context.getContentResolver();
         Uri collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
         String[] projection = new String[]{MediaStore.Files.FileColumns._ID};
         String selection = MediaStore.Files.FileColumns.RELATIVE_PATH + "=? AND "
                 + MediaStore.Files.FileColumns.DISPLAY_NAME + "=?";
-        String[] selectionArgs = new String[]{relativePath, backupFile.getName()};
+        String[] selectionArgs = new String[]{relativePath, displayName};
 
-        try (Cursor cursor = context.getContentResolver().query(collection, projection, selection, selectionArgs, null)) {
+        try (Cursor cursor = resolver.query(collection, projection, selection, selectionArgs, null)) {
             if (cursor != null && cursor.moveToFirst()) {
                 long id = cursor.getLong(0);
                 return ContentUris.withAppendedId(collection, id);
@@ -527,39 +858,57 @@ public class Utils {
         return null;
     }
 
-    private static String getRelativeMediaStorePath(File backupFile) {
-        File externalStorageDirectory = Environment.getExternalStorageDirectory();
-        File parentDirectory = backupFile.getParentFile();
-        if (parentDirectory == null) {
-            return null;
+    private static void copyUriToFile(Context context, Uri sourceUri, File destinationFile) throws IOException {
+        File parentFile = destinationFile.getParentFile();
+        if (parentFile != null && !parentFile.exists() && !parentFile.mkdirs()) {
+            throw new IOException("Unable to create directory: " + parentFile);
         }
 
-        String rootPath = externalStorageDirectory.getAbsolutePath();
-        String parentPath = parentDirectory.getAbsolutePath();
-        if (!parentPath.startsWith(rootPath + File.separator)) {
-            return null;
+        try (InputStream inputStream = context.getContentResolver().openInputStream(sourceUri);
+             OutputStream outputStream = new FileOutputStream(destinationFile)) {
+            if (inputStream == null) {
+                throw new IOException("Unable to open backup file for reading: " + sourceUri);
+            }
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+            }
+            outputStream.flush();
         }
-
-        return parentPath.substring(rootPath.length() + 1).replace(File.separatorChar, '/') + "/";
     }
 
-    private static boolean ensureLegacyStorageAccess(Context context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
-            return true;
+    private static void copyDatabaseFamily(File[] sourceFiles, File[] destinationFiles, boolean deleteMissingSideFiles) throws IOException {
+        for (int i = 0; i < sourceFiles.length; i++) {
+            File sourceFile = sourceFiles[i];
+            File destinationFile = destinationFiles[i];
+
+            if (!sourceFile.exists()) {
+                if (i > 0 && deleteMissingSideFiles && destinationFile.exists() && !destinationFile.delete()) {
+                    throw new IOException("Unable to delete stale database side file: " + destinationFile);
+                }
+                continue;
+            }
+
+            copyFile(sourceFile, destinationFile);
+        }
+    }
+
+    private static void copyFile(File sourceFile, File destinationFile) throws IOException {
+        File parentFile = destinationFile.getParentFile();
+        if (parentFile != null && !parentFile.exists() && !parentFile.mkdirs()) {
+            throw new IOException("Unable to create directory: " + parentFile);
         }
 
-        Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-        intent.setData(Uri.parse("package:" + context.getPackageName()));
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-        if (intent.resolveActivity(context.getPackageManager()) == null) {
-            intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try (InputStream inputStream = new FileInputStream(sourceFile);
+             OutputStream outputStream = new FileOutputStream(destinationFile)) {
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+            }
+            outputStream.flush();
         }
-
-        context.startActivity(intent);
-        toast(context, context.getString(R.string.toast_manage_storage_db));
-        return false;
     }
 
     public static void deleteImageCache(Context context) {
@@ -589,6 +938,10 @@ public class Utils {
     }
 
     public static void showNotification(Context context, File downloadedFile) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
 
         Intent intent = new Intent(Intent.ACTION_VIEW);
         Uri fileUri = FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", downloadedFile);
@@ -606,7 +959,9 @@ public class Utils {
 
         NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 
-        notificationManager.notify(notificationId++, builder.build());
+        if (notificationManager != null) {
+            notificationManager.notify(notificationId++, builder.build());
+        }
     }
 
     public static void createNotificationChannel(Context context) {

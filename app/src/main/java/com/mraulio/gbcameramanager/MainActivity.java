@@ -12,7 +12,6 @@ import static com.mraulio.gbcameramanager.utils.Utils.hashFrames;
 import static com.mraulio.gbcameramanager.utils.Utils.sortPalettes;
 import static com.mraulio.gbcameramanager.utils.Utils.toast;
 
-import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -23,7 +22,7 @@ import android.content.res.Resources;
 import android.graphics.Color;
 import android.hardware.usb.UsbManager;
 import android.net.Uri;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.LocaleList;
@@ -106,6 +105,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        Utils.configureStorage(this);
 
         //Unhandled Exception Manager
         Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler(this));
@@ -272,20 +273,20 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requestPermissions() {
-        if (SDK_INT <= Build.VERSION_CODES.Q && ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        if (SDK_INT <= Build.VERSION_CODES.P && ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
-            // Permission is not granted
-            // Ask for permission
             ActivityCompat.requestPermissions(this,
-                    new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE, android.Manifest.permission.READ_EXTERNAL_STORAGE},
                     1);
+            return;
         }
-        if (SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+
+        if (SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
             // Permission is not granted
             // Ask for permission
             ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
                     1);
         }
     }
@@ -385,7 +386,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    private class ReadDataAsyncTask extends AsyncTask<Void, Void, Void> {
+    private class ReadDataAsyncTask extends AppTask<Void, Void, Void> {
 
         @Override
         protected Void doInBackground(Void... voids) {
@@ -492,7 +493,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             //resume tasks needing this permission
             toast(this, getString(R.string.permissions_toast));
             Utils.makeDirs();//If permissions granted, create the folders
