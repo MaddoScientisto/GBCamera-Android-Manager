@@ -160,6 +160,9 @@ public class CustomGridViewAdapterImage extends ArrayAdapter<GbcImage> {
             holder.txtDate.setVisibility(GONE);
         }
 
+        row.setContentDescription(name);
+        holder.imageItem.setContentDescription(name);
+
         if (StaticValues.showGbStorageSyncIcons) {
             holder.syncStatusIcon.setVisibility(View.VISIBLE);
             switch (data.get(position).getGbStorageSyncStatus()) {

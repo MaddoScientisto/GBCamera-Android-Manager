@@ -106,6 +106,7 @@ public class Utils {
     private static final String DB_NAME_SHM = "Database-shm";
     private static final String DB_NAME_WAL = "Database-wal";
     private static final String DB_BACKUP_TREE_URI_PREF = "db_backup_tree_uri";
+    private static final String EXPORT_TREE_URI_PREF = "export_tree_uri";
     private static final int MIN_RESTORABLE_DB_VERSION = 5;
 
     public static LinkedHashMap<String, String> frameGroupsNames = new LinkedHashMap<>();
@@ -166,6 +167,30 @@ public class Utils {
 
         public DocumentFile getDocumentDirectory() {
             return documentDirectory;
+        }
+    }
+
+    public static final class SavedExportEntry {
+        private final String displayName;
+        private final Uri uri;
+        private final String mimeType;
+
+        SavedExportEntry(String displayName, Uri uri, String mimeType) {
+            this.displayName = displayName;
+            this.uri = uri;
+            this.mimeType = mimeType;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        public Uri getUri() {
+            return uri;
+        }
+
+        public String getMimeType() {
+            return mimeType;
         }
     }
 
@@ -510,12 +535,56 @@ public class Utils {
         sharedPreferences.edit().putString(DB_BACKUP_TREE_URI_PREF, treeUri.toString()).apply();
     }
 
+    public static void persistExportTreeUri(Context context, Uri treeUri) {
+        if (treeUri == null) {
+            return;
+        }
+
+        int flags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+        context.getContentResolver().takePersistableUriPermission(treeUri, flags);
+        sharedPreferences.edit().putString(EXPORT_TREE_URI_PREF, treeUri.toString()).apply();
+    }
+
     public static Uri getStoredBackupTreeUri() {
         String treeUri = sharedPreferences.getString(DB_BACKUP_TREE_URI_PREF, "");
         if (treeUri == null || treeUri.isEmpty()) {
             return null;
         }
         return Uri.parse(treeUri);
+    }
+
+    public static Uri getStoredExportTreeUri() {
+        String treeUri = sharedPreferences.getString(EXPORT_TREE_URI_PREF, "");
+        if (treeUri == null || treeUri.isEmpty()) {
+            return null;
+        }
+        return Uri.parse(treeUri);
+    }
+
+    public static void clearExportTreeUri(Context context) {
+        Uri treeUri = getStoredExportTreeUri();
+        if (treeUri != null) {
+            try {
+                int flags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+                context.getContentResolver().releasePersistableUriPermission(treeUri, flags);
+            } catch (SecurityException ignored) {
+            }
+        }
+        sharedPreferences.edit().remove(EXPORT_TREE_URI_PREF).apply();
+    }
+
+    public static String getExportLocationSummary(Context context) {
+        Uri exportTreeUri = getStoredExportTreeUri();
+        if (exportTreeUri == null) {
+            return context.getString(R.string.export_location_default_value);
+        }
+
+        DocumentFile documentFile = DocumentFile.fromTreeUri(context, exportTreeUri);
+        if (documentFile != null && documentFile.getName() != null && !documentFile.getName().isEmpty()) {
+            return context.getString(R.string.export_location_custom_value, documentFile.getName());
+        }
+
+        return context.getString(R.string.export_location_custom_value, exportTreeUri.toString());
     }
 
     private static int getBackupDatabaseVersion(File backupDirectory) {
@@ -762,6 +831,14 @@ public class Utils {
         return Environment.DIRECTORY_DOWNLOADS + "/" + MAIN_FOLDER_NAME + "/" + DB_BACKUP_FOLDER_NAME + "/";
     }
 
+    private static String getSharedImageExportRelativePath() {
+        return Environment.DIRECTORY_DOWNLOADS + "/" + MAIN_FOLDER_NAME + "/Images/";
+    }
+
+    private static String getSharedTextExportRelativePath() {
+        return Environment.DIRECTORY_DOWNLOADS + "/" + MAIN_FOLDER_NAME + "/Hex images/";
+    }
+
     private static String getSharedBackupRelativePath(String backupName) {
         return getSharedBackupRelativeRoot() + backupName + "/";
     }
@@ -772,16 +849,16 @@ public class Utils {
             if (!sourceFile.exists()) {
                 continue;
             }
-            writeFileToSharedDownloads(context, sourceFile, backupEntry.getRelativePath(), sourceFile.getName());
+            writeFileToSharedDownloads(context, sourceFile, backupEntry.getRelativePath(), sourceFile.getName(), "application/octet-stream");
         }
     }
 
-    private static void writeFileToSharedDownloads(Context context, File sourceFile, String relativePath, String displayName) throws IOException {
+    private static SavedExportEntry writeFileToSharedDownloads(Context context, File sourceFile, String relativePath, String displayName, String mimeType) throws IOException {
         ContentResolver resolver = context.getContentResolver();
         Uri collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
         ContentValues values = new ContentValues();
         values.put(MediaStore.Files.FileColumns.DISPLAY_NAME, displayName);
-        values.put(MediaStore.Files.FileColumns.MIME_TYPE, "application/octet-stream");
+        values.put(MediaStore.Files.FileColumns.MIME_TYPE, mimeType);
         values.put(MediaStore.Files.FileColumns.RELATIVE_PATH, relativePath);
         values.put(MediaStore.Files.FileColumns.IS_PENDING, 1);
 
@@ -806,6 +883,51 @@ public class Utils {
             publishValues.put(MediaStore.Files.FileColumns.IS_PENDING, 0);
             resolver.update(uri, publishValues, null, null);
         }
+
+        return new SavedExportEntry(displayName, uri, mimeType);
+    }
+
+    public static SavedExportEntry saveExportToConfiguredLocation(Context context, File sourceFile, String displayName, String mimeType, boolean textExport) throws IOException {
+        Uri exportTreeUri = getStoredExportTreeUri();
+        if (exportTreeUri != null) {
+            return writeFileToDocumentTree(context, exportTreeUri, sourceFile, displayName, mimeType);
+        }
+
+        String relativePath = textExport ? getSharedTextExportRelativePath() : getSharedImageExportRelativePath();
+        return writeFileToSharedDownloads(context, sourceFile, relativePath, displayName, mimeType);
+    }
+
+    private static SavedExportEntry writeFileToDocumentTree(Context context, Uri treeUri, File sourceFile, String displayName, String mimeType) throws IOException {
+        DocumentFile rootDirectory = DocumentFile.fromTreeUri(context, treeUri);
+        if (rootDirectory == null || !rootDirectory.isDirectory()) {
+            throw new IOException("Unable to access export directory");
+        }
+
+        DocumentFile existingFile = rootDirectory.findFile(displayName);
+        if (existingFile != null && !existingFile.delete()) {
+            throw new IOException("Unable to replace existing export file");
+        }
+
+        DocumentFile documentFile = rootDirectory.createFile(mimeType, displayName);
+        if (documentFile == null) {
+            throw new IOException("Unable to create export file in selected folder");
+        }
+
+        try (InputStream inputStream = new FileInputStream(sourceFile);
+             OutputStream outputStream = context.getContentResolver().openOutputStream(documentFile.getUri(), "w")) {
+            if (outputStream == null) {
+                throw new IOException("Unable to open export file for writing");
+            }
+
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+            }
+            outputStream.flush();
+        }
+
+        return new SavedExportEntry(displayName, documentFile.getUri(), mimeType);
     }
 
     private static void copyDatabaseFamilyFromSharedDownloads(Context context, DatabaseBackupEntry backupEntry, File[] destinationFiles, boolean deleteMissingSideFiles) throws IOException {
@@ -953,6 +1075,32 @@ public class Utils {
                 .setSmallIcon(R.drawable.ic_download)
                 .setContentTitle(context.getResources().getString(R.string.notification_download_complete))
                 .setContentText(downloadedFile.getName())
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true);
+
+        NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+
+        if (notificationManager != null) {
+            notificationManager.notify(notificationId++, builder.build());
+        }
+    }
+
+    public static void showNotification(Context context, SavedExportEntry downloadedFile) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(downloadedFile.getUri(), downloadedFile.getMimeType());
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_download)
+                .setContentTitle(context.getResources().getString(R.string.notification_download_complete))
+                .setContentText(downloadedFile.getDisplayName())
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true);

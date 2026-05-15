@@ -71,6 +71,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.widget.TooltipCompat;
 import androidx.fragment.app.Fragment;
 
 import com.flask.colorpicker.ColorPickerView;
@@ -182,6 +183,11 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
         Button btnLastPage = view.findViewById(R.id.btnLastPage);
 
         tv_page = view.findViewById(R.id.tv_page);
+        setTooltip(btnFirstPage, R.string.tooltip_first_page);
+        setTooltip(btnPrevPage, R.string.tooltip_previous_page);
+        setTooltip(tv_page, R.string.tooltip_page_selector);
+        setTooltip(btnNextPage, R.string.tooltip_next_page);
+        setTooltip(btnLastPage, R.string.tooltip_last_page);
 
         tv_page.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -1372,6 +1378,12 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
             editor.putInt("current_page", currentPage);
             editor.apply();
         }
+    }
+
+    private void setTooltip(View view, int resId) {
+        String tooltip = getString(resId);
+        TooltipCompat.setTooltipText(view, tooltip);
+        view.setContentDescription(tooltip);
     }
 
     private AlertDialog numberPickerPageDialog(Context context) {

@@ -52,9 +52,12 @@ import android.widget.CheckBox;
 import android.widget.GridView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.appcompat.widget.TooltipCompat;
 
 import com.hoho.android.usbserial.driver.UsbSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
@@ -194,6 +197,8 @@ public class MainImageDialog implements SerialInputOutputManager.Listener {
             cbCrop = dialog.findViewById(R.id.cbCrop);
             cbInvert = dialog.findViewById(R.id.cbInvert);
             spFrameGroupsImage = dialog.findViewById(R.id.spFrameGroupsImage);
+                applyDialogTooltips(printButton, btnPaperize, rotateButton, cbCrop, saveButton, shareButton,
+                    cbInvert, cbFrameKeep, paletteFrameSelButton);
 
             dialogBackground.setOnTouchListener(new View.OnTouchListener() {
                 boolean eventHandled = false;
@@ -672,17 +677,17 @@ public class MainImageDialog implements SerialInputOutputManager.Listener {
             shareButton.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    List sharedList = new ArrayList();
+                    List<GbcImage> sharedList = new ArrayList<>();
                     sharedList.add(gbcImage);
-                    shareImage(sharedList, context, cbCrop.isChecked());
+                    showExportOptionsDialog(sharedList, cbCrop.isChecked(), true);
                 }
             });
             saveButton.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    List saveList = new ArrayList();
+                    List<GbcImage> saveList = new ArrayList<>();
                     saveList.add(gbcImage);
-                    saveImage(saveList, context, cbCrop.isChecked());
+                    showExportOptionsDialog(saveList, cbCrop.isChecked(), false);
                 }
             });
 
@@ -897,6 +902,8 @@ public class MainImageDialog implements SerialInputOutputManager.Listener {
                         btn_paperize.setVisibility(VISIBLE);
                     }
                     btn_paperize.setVisibility(GONE);
+                    applyDialogTooltips(printButton, btn_paperize, rotateButton, cbCrop, saveButton, shareButton,
+                            cbInvert, cbFrameKeep, paletteFrameSelButton);
 
                     rotateButton.setOnClickListener(new View.OnClickListener() {
                         @Override
@@ -1212,13 +1219,13 @@ public class MainImageDialog implements SerialInputOutputManager.Listener {
                                 GbcImage gbcImage = filteredGbcImages.get(i);
                                 sharedList.add(gbcImage);
                             }
-                            shareImage(sharedList, context, cbCrop.isChecked());
+                            showExportOptionsDialog(sharedList, cbCrop.isChecked(), true);
                         }
                     });
                     saveButton.setOnClickListener(new View.OnClickListener() {
                         @Override
                         public void onClick(View v) {
-                            saveImage(selectedGbcImages, context, cbCrop.isChecked());
+                            showExportOptionsDialog(selectedGbcImages, cbCrop.isChecked(), false);
                         }
                     });
 
@@ -1509,6 +1516,101 @@ public class MainImageDialog implements SerialInputOutputManager.Listener {
             });
             layoutSelected.addView(imageViewMini);
         }
+    }
+
+    private void showExportOptionsDialog(List<GbcImage> images, boolean crop, boolean share) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        View exportView = activity.getLayoutInflater().inflate(R.layout.dialog_export_options, null);
+        builder.setView(exportView);
+        builder.setTitle(share ? R.string.export_dialog_title_share : R.string.export_dialog_title_save);
+        builder.setNegativeButton(R.string.cancel, null);
+
+        RadioButton rbExportPng = exportView.findViewById(R.id.rbExportPng);
+        RadioButton rbExportTxt = exportView.findViewById(R.id.rbExportTxt);
+        CheckBox cbExportMetadata = exportView.findViewById(R.id.cbExportMetadataDialog);
+        CheckBox cbExportSquare = exportView.findViewById(R.id.cbExportSquareDialog);
+        TextView tvExportSizePrompt = exportView.findViewById(R.id.tvExportSizePrompt);
+
+        rbExportPng.setChecked(StaticValues.exportPng);
+        rbExportTxt.setChecked(!StaticValues.exportPng);
+        cbExportMetadata.setChecked(StaticValues.exportMetadata);
+        cbExportSquare.setChecked(StaticValues.exportSquare);
+
+        Runnable updatePngControls = new Runnable() {
+            @Override
+            public void run() {
+                boolean exportPng = rbExportPng.isChecked();
+                cbExportMetadata.setEnabled(exportPng);
+                cbExportSquare.setEnabled(exportPng);
+                tvExportSizePrompt.setEnabled(exportPng);
+            }
+        };
+        rbExportPng.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                updatePngControls.run();
+            }
+        });
+        rbExportTxt.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                updatePngControls.run();
+            }
+        });
+        updatePngControls.run();
+
+        AlertDialog exportDialog = builder.create();
+
+        int[] buttonIds = new int[]{
+                R.id.btnExport1x, R.id.btnExport2x, R.id.btnExport3x, R.id.btnExport4x, R.id.btnExport5x,
+                R.id.btnExport6x, R.id.btnExport7x, R.id.btnExport8x, R.id.btnExport9x, R.id.btnExport10x
+        };
+
+        for (int i = 0; i < buttonIds.length; i++) {
+            Button sizeButton = exportView.findViewById(buttonIds[i]);
+            final int exportSize = i + 1;
+            sizeButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    GalleryUtils.ExportOptions options = new GalleryUtils.ExportOptions(
+                            rbExportPng.isChecked(),
+                            exportSize,
+                            cbExportSquare.isChecked(),
+                            cbExportMetadata.isChecked());
+                    if (share) {
+                        shareImage(images, context, crop, options);
+                    } else {
+                        saveImage(images, context, crop, options);
+                    }
+                    exportDialog.dismiss();
+                }
+            });
+        }
+
+        exportDialog.show();
+    }
+
+    private void applyDialogTooltips(View printButton, View paperizeButton, View rotateButton, View cropButton,
+                                     View saveButton, View shareButton, View invertButton, View keepFrameButton,
+                                     View paletteFrameButton) {
+        setTooltip(printButton, R.string.tooltip_print_image);
+        setTooltip(paperizeButton, R.string.tooltip_paperize_image);
+        setTooltip(rotateButton, R.string.tooltip_rotate_image);
+        setTooltip(cropButton, R.string.tooltip_crop_image);
+        setTooltip(saveButton, R.string.tooltip_save_image);
+        setTooltip(shareButton, R.string.tooltip_share_image);
+        setTooltip(invertButton, R.string.tooltip_invert_palette);
+        setTooltip(keepFrameButton, R.string.tooltip_keep_frame_color);
+        setTooltip(paletteFrameButton, R.string.tooltip_toggle_palette_frame);
+    }
+
+    private void setTooltip(View view, int resId) {
+        if (view == null) {
+            return;
+        }
+        String tooltip = context.getString(resId);
+        TooltipCompat.setTooltipText(view, tooltip);
+        view.setContentDescription(tooltip);
     }
 
 

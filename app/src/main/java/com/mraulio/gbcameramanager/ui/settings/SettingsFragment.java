@@ -4,7 +4,10 @@ import static com.mraulio.gbcameramanager.MainActivity.updateNavigationView;
 import static com.mraulio.gbcameramanager.utils.StaticValues.exportSquare;
 import static com.mraulio.gbcameramanager.utils.StaticValues.sortPalettesByUsage;
 import static com.mraulio.gbcameramanager.utils.Utils.backupDatabase;
+import static com.mraulio.gbcameramanager.utils.Utils.clearExportTreeUri;
+import static com.mraulio.gbcameramanager.utils.Utils.getExportLocationSummary;
 import static com.mraulio.gbcameramanager.utils.Utils.persistBackupTreeUri;
+import static com.mraulio.gbcameramanager.utils.Utils.persistExportTreeUri;
 import static com.mraulio.gbcameramanager.utils.Utils.restartApplication;
 import static com.mraulio.gbcameramanager.utils.Utils.showDbBackups;
 import static com.mraulio.gbcameramanager.utils.Utils.sortPalettes;
@@ -23,6 +26,7 @@ import android.widget.CompoundButton;
 import android.widget.RadioButton;
 import android.widget.Spinner;
 import android.widget.Switch;
+import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -45,6 +49,10 @@ public class SettingsFragment extends Fragment {
             new ActivityResultContracts.OpenDocumentTree(),
             this::handleBackupTreeSelected
     );
+        private final ActivityResultLauncher<Uri> exportTreePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.OpenDocumentTree(),
+            this::handleExportTreeSelected
+        );
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -66,6 +74,9 @@ public class SettingsFragment extends Fragment {
         CheckBox cbShowGbStorage = view.findViewById(R.id.cb_gbstorage);
         Button btnExportDB = view.findViewById(R.id.btnExportDB);
         Button btnRestoreDB = view.findViewById(R.id.btnRestoreDB);
+        Button btnChooseExportFolder = view.findViewById(R.id.btnChooseExportFolder);
+        Button btnResetExportFolder = view.findViewById(R.id.btnResetExportFolder);
+        TextView tvExportLocationValue = view.findViewById(R.id.tvExportLocationValue);
         CheckBox cbSortPalettes = view.findViewById(R.id.sw_sort_palettes);
         cbSortPalettes.setChecked(sortPalettesByUsage);
         StaticValues.currentFragment = StaticValues.CURRENT_FRAGMENT.SETTINGS;
@@ -410,6 +421,21 @@ public class SettingsFragment extends Fragment {
             }
         });
 
+        tvExportLocationValue.setText(getExportLocationSummary(requireContext()));
+        btnChooseExportFolder.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                exportTreePickerLauncher.launch(null);
+            }
+        });
+        btnResetExportFolder.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                clearExportTreeUri(requireContext());
+                tvExportLocationValue.setText(getExportLocationSummary(requireContext()));
+            }
+        });
+
         return view;
     }
 
@@ -427,6 +453,19 @@ public class SettingsFragment extends Fragment {
         persistBackupTreeUri(getContext(), treeUri);
         if (!showDbBackups(getContext(), getActivity())) {
             com.mraulio.gbcameramanager.utils.Utils.toast(getContext(), getString(R.string.toast_no_backups_found));
+        }
+    }
+
+    private void handleExportTreeSelected(Uri treeUri) {
+        if (treeUri == null) {
+            return;
+        }
+
+        persistExportTreeUri(requireContext(), treeUri);
+        View root = getView();
+        if (root != null) {
+            TextView tvExportLocationValue = root.findViewById(R.id.tvExportLocationValue);
+            tvExportLocationValue.setText(getExportLocationSummary(requireContext()));
         }
     }
 

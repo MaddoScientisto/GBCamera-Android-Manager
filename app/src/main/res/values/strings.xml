@@ -37,6 +37,11 @@
     <string name="png_size">PNG size:\u0020</string>
     <string name="images_page">Select images per page:\u0020</string>
     <string name="language">Language (needs restart):\u0020</string>
+    <string name="export_location_label">Export save location</string>
+    <string name="export_location_choose">Choose folder</string>
+    <string name="export_location_reset">Reset to default</string>
+    <string name="export_location_default_value">Downloads/GBCamera Manager</string>
+    <string name="export_location_custom_value">Custom folder: %1$s</string>
 
     <!--Frames fragment strings-->
     <string name="cant_delete_base">Can\'t delete a base frame</string>
@@ -190,7 +195,7 @@
     <string name="json_backup_failed">JSON Backup failed</string>
     <string name="page_selector_dialog">Select page</string>
     <string name="sizes_exception">All images must have the same size.</string>
-    <string name="save_location_hint">PNGs, HDRs and GIFs are saved into \n\u0020 Pictures/GBCamera Manager. \nOther files are stored in \n\u0020 Download/GBCamera Manager.</string>
+    <string name="save_location_hint">The Save export action writes PNGs to Downloads/GBCamera Manager/Images and TXT exports to Downloads/GBCamera Manager/Hex images by default. You can choose a different export folder above and reset it back to Downloads at any time.</string>
 
     <string name="done_dumping_ram">DONE DUMPING RAM! Check your Download/GBCamera Manager/Save dumps folder</string>
     <string name="done_dumping_photo">DONE DUMPING PHOTO ROM! Check your Download/GBCamera Manager/PHOTO Rom Dumps folder</string>
@@ -221,6 +226,23 @@
 
     <string name="collage_too_many_images">Too many images selected. Collage will fail.</string>
     <string name="square_download">Export square image</string>
+    <string name="export_dialog_title_save">Export image</string>
+    <string name="export_dialog_title_share">Share image</string>
+    <string name="export_dialog_size_prompt">Choose export size:</string>
+    <string name="tooltip_print_image">Print image</string>
+    <string name="tooltip_rotate_image">Rotate image</string>
+    <string name="tooltip_crop_image">Crop image before export</string>
+    <string name="tooltip_save_image">Export and save image</string>
+    <string name="tooltip_share_image">Export and share image</string>
+    <string name="tooltip_paperize_image">Paperize image</string>
+    <string name="tooltip_invert_palette">Invert palette</string>
+    <string name="tooltip_keep_frame_color">Keep frame color</string>
+    <string name="tooltip_toggle_palette_frame">Toggle palettes and frames</string>
+    <string name="tooltip_first_page">First page</string>
+    <string name="tooltip_previous_page">Previous page</string>
+    <string name="tooltip_page_selector">Choose page</string>
+    <string name="tooltip_next_page">Next page</string>
+    <string name="tooltip_last_page">Last page</string>
 
     <string name="toast_frames_json">Frames Json saved.</string>
     <string name="import_valid_images">Please, select only valid image formats (.jpg, .jpeg, .png, .bmp).</string>

@@ -112,7 +112,29 @@ import java.util.zip.Deflater;
 
 public class GalleryUtils {
 
+    public static class ExportOptions {
+        public final boolean exportPng;
+        public final int exportSize;
+        public final boolean exportSquare;
+        public final boolean exportMetadata;
+
+        public ExportOptions(boolean exportPng, int exportSize, boolean exportSquare, boolean exportMetadata) {
+            this.exportPng = exportPng;
+            this.exportSize = exportSize;
+            this.exportSquare = exportSquare;
+            this.exportMetadata = exportMetadata;
+        }
+
+        public static ExportOptions fromStaticValues() {
+            return new ExportOptions(StaticValues.exportPng, StaticValues.exportSize, StaticValues.exportSquare, StaticValues.exportMetadata);
+        }
+    }
+
     public static void saveImage(List<GbcImage> gbcImages, Context context, boolean crop) {
+        saveImage(gbcImages, context, crop, ExportOptions.fromStaticValues());
+    }
+
+    public static void saveImage(List<GbcImage> gbcImages, Context context, boolean crop, ExportOptions options) {
         LocalDateTime now = null;
         Date nowDate = new Date();
         File file = null;
@@ -121,10 +143,10 @@ public class GalleryUtils {
         }
 
         String fileNameBase = "gbcImage_";
-        String extension = StaticValues.exportPng ? ".png" : ".txt";
+        String extension = options.exportPng ? ".png" : ".txt";
         for (int i = 0; i < gbcImages.size(); i++) {
             GbcImage gbcImage = gbcImages.get(i);
-            Bitmap image = Utils.imageBitmapCache.get(gbcImage.getHashCode());
+            Utils.SavedExportEntry savedExportEntry = null;
             String fileName = null;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 DateTimeFormatter dtf = DateTimeFormatter.ofPattern(dateLocale + "_HH-mm-ss");
@@ -139,111 +161,40 @@ public class GalleryUtils {
             }
 
             fileName += extension;
-            if (StaticValues.exportPng) {
-                file = new File(Utils.IMAGES_FOLDER, fileName);
-
-                if (crop) {
-                    int imageMargin = 16;
-                    if (hashFrames.get(gbcImage.getFrameId()) != null) {
-                        imageMargin = hashFrames.get(gbcImage.getFrameId()).getImageMargin();
-                    } else {
-                        if (image.getHeight() == 144 && image.getWidth() == 160) {
-                            imageMargin = DEFAULT_FRAME_MARGIN;
-                        }
-                        //For the wild frames
-                        else if (image.getHeight() == 224) {
-                            imageMargin = WILD_FRAME_MARGIN;
-                        }
-                    }
-                    image = Bitmap.createBitmap(image, 16, imageMargin, 128, 112);
-                }
-
-                //Rotate the image
-                image = rotateBitmap(image, gbcImage);
-
-                //Make square if checked in settings
-                if (exportSquare) {
-                    image = makeSquareImage(image);
-                }
-
-                try (FileOutputStream out = new FileOutputStream(file)) {
-                    Bitmap scaled = Bitmap.createScaledBitmap(image, image.getWidth() * StaticValues.exportSize, image.getHeight() * StaticValues.exportSize, false);
-                    scaled.compress(Bitmap.CompressFormat.PNG, 100, out);
-                    out.flush();
-
-                    mediaScanner(file, context);
-
-                    if (StaticValues.exportMetadata) {
-                        //Create the metadata text
-                        StringBuilder stringBuilder = new StringBuilder();
-                        LinkedHashMap lhm = gbcImage.getImageMetadata();
-                        stringBuilder.append("Created in GBCamera Android Manager\n");
-                        stringBuilder.append("Palette: " + hashPalettes.get(gbcImage.getPaletteId()).getPaletteName() + " (" + gbcImage.getPaletteId() + ")\n");
-                        if (gbcImage.getFrameId() != null)
-                            stringBuilder.append("Frame: " + hashFrames.get(gbcImage.getFrameId()).getFrameName() + " (" + gbcImage.getFrameId() + ")\n");
-
-                        SimpleDateFormat sdf = new SimpleDateFormat(dateLocale + " HH:mm:ss:SSS");
-                        stringBuilder.append("Creation date: " + sdf.format(gbcImage.getCreationDate()) + "\n");
-
-                        if (lhm != null) { //Last seen images don't have metadata
-                            for (Object key : lhm.keySet()) {
-                                if (key.equals("frameIndex")) continue;
-                                String metadata = metadataTexts.get(key);
-                                String value = (String) lhm.get(key);
-                                if (metadata == null) {
-                                    metadata = (String) key;
-                                }
-                                stringBuilder.append(metadata).append(": ").append(value).append("\n");
-                                if (key.equals("isCopy")) stringBuilder.append("\n");
-                            }
-                        }
-
-                        String metadataComment = stringBuilder.toString();
-
-                        try {
-                            UnicodeExifInterface unicodeExifInterface = new UnicodeExifInterface(file.getAbsolutePath());
-                            unicodeExifInterface.setAttribute(UnicodeExifInterface.TAG_USER_COMMENT, metadataComment);
-
-                            unicodeExifInterface.saveAttributes();
-                        } catch (Exception ex) {
-                            ex.printStackTrace();
-                        }
-                    }
-
+            File tempFile = null;
+            if (options.exportPng) {
+                try {
+                    tempFile = File.createTempFile("gbcam_export_", ".png", context.getCacheDir());
+                    writePngExportFile(tempFile, gbcImage, crop, options);
+                    savedExportEntry = Utils.saveExportToConfiguredLocation(context, tempFile, fileName, "image/png", false);
+                    file = tempFile;
                 } catch (IOException e) {
                     e.printStackTrace();
+                } finally {
+                    if (tempFile != null && tempFile.exists()) {
+                        tempFile.delete();
+                    }
                 }
             } else {
-                file = new File(Utils.TXT_FOLDER, fileName);
-
-                //Saving txt without cropping it
                 try {
-                    //Need to change the palette to bw so the encodeImage method works
-                    image = frameChange(gbcImage, gbcImage.getFrameId(), gbcImage.isInvertPalette(), gbcImage.isInvertFramePalette(), gbcImage.isLockFrame(), false);
-
-                    StringBuilder txtBuilder = new StringBuilder();
-                    //Appending these commands so the export is compatible with
-                    // https://herrzatacke.github.io/gb-printer-web/#/import
-                    // and https://mofosyne.github.io/arduino-gameboy-printer-emulator/GameBoyPrinterDecoderJS/gameboy_printer_js_decoder.html
-                    txtBuilder.append("{\"command\":\"INIT\"}\n" +
-                            "{\"command\":\"DATA\",\"compressed\":0,\"more\":1}\n");
-                    String txt = Utils.bytesToHex(Utils.encodeImage(image, "bw"));
-                    txt = addSpacesAndNewLines(txt).toUpperCase();
-                    txtBuilder.append(txt);
-                    txtBuilder.append("\n{\"command\":\"DATA\",\"compressed\":0,\"more\":0}\n" +
-                            "{\"command\":\"PRNT\",\"sheets\":1,\"margin_upper\":1,\"margin_lower\":3,\"pallet\":228,\"density\":64 }");
-                    FileWriter fileWriter = new FileWriter(file);
-                    BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
-                    bufferedWriter.write(txtBuilder.toString());
-                    bufferedWriter.close();
+                    tempFile = File.createTempFile("gbcam_export_", ".txt", context.getCacheDir());
+                    writeTxtExportFile(tempFile, gbcImage);
+                    savedExportEntry = Utils.saveExportToConfiguredLocation(context, tempFile, fileName, "text/plain", true);
+                    file = tempFile;
                 } catch (IOException e) {
                     e.printStackTrace();
+                } finally {
+                    if (tempFile != null && tempFile.exists()) {
+                        tempFile.delete();
+                    }
                 }
             }
-            showNotification(context, file);
+            if (savedExportEntry != null) {
+                showNotification(context, savedExportEntry);
+            }
         }
-        if (StaticValues.exportPng) {
-            toast(StaticValues.fab.getContext(), StaticValues.fab.getContext().getString(R.string.toast_saved) + " x" + StaticValues.exportSize);
+        if (options.exportPng) {
+            toast(StaticValues.fab.getContext(), StaticValues.fab.getContext().getString(R.string.toast_saved) + " x" + options.exportSize);
         } else
             toast(StaticValues.fab.getContext(), StaticValues.fab.getContext().getString(R.string.toast_saved_txt));
     }
@@ -295,50 +246,34 @@ public class GalleryUtils {
     }
 
     static void shareImage(List<GbcImage> gbcImages, Context context, boolean crop) {
+        shareImage(gbcImages, context, crop, ExportOptions.fromStaticValues());
+    }
+
+    static void shareImage(List<GbcImage> gbcImages, Context context, boolean crop, ExportOptions options) {
         ArrayList<Uri> imageUris = new ArrayList<>();
         FileOutputStream fileOutputStream = null;
 
         try {
             for (int i = 0; i < gbcImages.size(); i++) {
                 GbcImage gbcImage = gbcImages.get(i);
-                Bitmap image = Utils.imageBitmapCache.get(gbcImage.getHashCode());
-
-                if (crop) {
-                    int imageMargin = 16;
-                    if (hashFrames.get(gbcImage.getFrameId()) != null) {
-                        imageMargin = hashFrames.get(gbcImage.getFrameId()).getImageMargin();
-                    } else {
-                        if (image.getHeight() == 144 && image.getWidth() == 160) {
-                            imageMargin = DEFAULT_FRAME_MARGIN;
-                        }
-                        //For the wild frames
-                        else if (image.getHeight() == 224) {
-                            imageMargin = WILD_FRAME_MARGIN;
-                        }
-                    }
-                    image = Bitmap.createBitmap(image, 16, imageMargin, 128, 112);
+                File file = new File(context.getExternalCacheDir(), "shared_image_" + i + (options.exportPng ? ".png" : ".txt"));
+                if (options.exportPng) {
+                    writePngExportFile(file, gbcImage, crop, options);
+                } else {
+                    writeTxtExportFile(file, gbcImage);
                 }
-                //Rotate the image
-                image = rotateBitmap(image, gbcImage);
-
-                //Make square if checked in settings
-                if (exportSquare) {
-                    image = makeSquareImage(image);
-                }
-                image = Bitmap.createScaledBitmap(image, image.getWidth() * StaticValues.exportSize, image.getHeight() * StaticValues.exportSize, false);
-                File file = new File(context.getExternalCacheDir(), "shared_image_" + i + ".png");
-                fileOutputStream = new FileOutputStream(file);
-                image.compress(Bitmap.CompressFormat.PNG, 100, fileOutputStream);
-                fileOutputStream.flush();
-                fileOutputStream.close();
 
                 Uri uri = FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", file);
                 imageUris.add(uri);
             }
 
-            Intent intent = new Intent(Intent.ACTION_SEND_MULTIPLE);
-            intent.setType("image/png");
-            intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, imageUris);
+            Intent intent = new Intent(imageUris.size() > 1 ? Intent.ACTION_SEND_MULTIPLE : Intent.ACTION_SEND);
+            intent.setType(options.exportPng ? "image/png" : "text/plain");
+            if (imageUris.size() > 1) {
+                intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, imageUris);
+            } else if (!imageUris.isEmpty()) {
+                intent.putExtra(Intent.EXTRA_STREAM, imageUris.get(0));
+            }
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             context.startActivity(Intent.createChooser(intent, "Share"));
         } catch (Exception e) {
@@ -352,6 +287,99 @@ public class GalleryUtils {
                     e.printStackTrace();
                 }
             }
+        }
+    }
+
+    private static Bitmap preparePngExportBitmap(GbcImage gbcImage, boolean crop, ExportOptions options) {
+        Bitmap image = Utils.imageBitmapCache.get(gbcImage.getHashCode());
+
+        if (crop) {
+            int imageMargin = 16;
+            if (hashFrames.get(gbcImage.getFrameId()) != null) {
+                imageMargin = hashFrames.get(gbcImage.getFrameId()).getImageMargin();
+            } else {
+                if (image.getHeight() == 144 && image.getWidth() == 160) {
+                    imageMargin = DEFAULT_FRAME_MARGIN;
+                } else if (image.getHeight() == 224) {
+                    imageMargin = WILD_FRAME_MARGIN;
+                }
+            }
+            image = Bitmap.createBitmap(image, 16, imageMargin, 128, 112);
+        }
+
+        image = rotateBitmap(image, gbcImage);
+
+        if (options.exportSquare) {
+            image = makeSquareImage(image);
+        }
+
+        return Bitmap.createScaledBitmap(image, image.getWidth() * options.exportSize, image.getHeight() * options.exportSize, false);
+    }
+
+    private static void writePngExportFile(File file, GbcImage gbcImage, boolean crop, ExportOptions options) throws IOException {
+        Bitmap scaled = preparePngExportBitmap(gbcImage, crop, options);
+        try (FileOutputStream out = new FileOutputStream(file)) {
+            scaled.compress(Bitmap.CompressFormat.PNG, 100, out);
+            out.flush();
+        }
+
+        if (options.exportMetadata) {
+            writeMetadataComment(file, gbcImage);
+        }
+    }
+
+    private static void writeTxtExportFile(File file, GbcImage gbcImage) throws IOException {
+        Bitmap image = frameChange(gbcImage, gbcImage.getFrameId(), gbcImage.isInvertPalette(), gbcImage.isInvertFramePalette(), gbcImage.isLockFrame(), false);
+
+        StringBuilder txtBuilder = new StringBuilder();
+        txtBuilder.append("{\"command\":\"INIT\"}\n" +
+                "{\"command\":\"DATA\",\"compressed\":0,\"more\":1}\n");
+        String txt = Utils.bytesToHex(Utils.encodeImage(image, "bw"));
+        txt = addSpacesAndNewLines(txt).toUpperCase();
+        txtBuilder.append(txt);
+        txtBuilder.append("\n{\"command\":\"DATA\",\"compressed\":0,\"more\":0}\n" +
+                "{\"command\":\"PRNT\",\"sheets\":1,\"margin_upper\":1,\"margin_lower\":3,\"pallet\":228,\"density\":64 }");
+        try (FileWriter fileWriter = new FileWriter(file);
+             BufferedWriter bufferedWriter = new BufferedWriter(fileWriter)) {
+            bufferedWriter.write(txtBuilder.toString());
+        }
+    }
+
+    private static void writeMetadataComment(File file, GbcImage gbcImage) {
+        StringBuilder stringBuilder = new StringBuilder();
+        LinkedHashMap lhm = gbcImage.getImageMetadata();
+        stringBuilder.append("Created in GBCamera Android Manager\n");
+        stringBuilder.append("Palette: " + hashPalettes.get(gbcImage.getPaletteId()).getPaletteName() + " (" + gbcImage.getPaletteId() + ")\n");
+        if (gbcImage.getFrameId() != null) {
+            stringBuilder.append("Frame: " + hashFrames.get(gbcImage.getFrameId()).getFrameName() + " (" + gbcImage.getFrameId() + ")\n");
+        }
+
+        SimpleDateFormat sdf = new SimpleDateFormat(dateLocale + " HH:mm:ss:SSS");
+        stringBuilder.append("Creation date: " + sdf.format(gbcImage.getCreationDate()) + "\n");
+
+        if (lhm != null) {
+            for (Object key : lhm.keySet()) {
+                if (key.equals("frameIndex")) {
+                    continue;
+                }
+                String metadata = metadataTexts.get(key);
+                String value = (String) lhm.get(key);
+                if (metadata == null) {
+                    metadata = (String) key;
+                }
+                stringBuilder.append(metadata).append(": ").append(value).append("\n");
+                if (key.equals("isCopy")) {
+                    stringBuilder.append("\n");
+                }
+            }
+        }
+
+        try {
+            UnicodeExifInterface unicodeExifInterface = new UnicodeExifInterface(file.getAbsolutePath());
+            unicodeExifInterface.setAttribute(UnicodeExifInterface.TAG_USER_COMMENT, stringBuilder.toString());
+            unicodeExifInterface.saveAttributes();
+        } catch (Exception ex) {
+            ex.printStackTrace();
         }
     }
 

@@ -106,12 +106,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        Utils.configureStorage(this);
-
         //Unhandled Exception Manager
         Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler(this));
 
         StaticValues.sharedPreferences = getSharedPreferences("Preferences", Context.MODE_PRIVATE);
+        Utils.configureStorage(this);
         SharedPreferences.Editor editor = StaticValues.sharedPreferences.edit();
 
         StaticValues.exportSize = StaticValues.sharedPreferences.getInt("export_size", 4);
