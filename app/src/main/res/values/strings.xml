@@ -332,6 +332,9 @@
     <string name="gbstorage_virtual_path">Virtual folder path</string>
     <string name="gbstorage_sync_new_label">New</string>
     <string name="gbstorage_sync_overwrite_label">Overwrite</string>
+    <string name="gbstorage_sync_duplicate_label">Duplicate</string>
+    <string name="gbstorage_overwrite_label_short">Overwrite</string>
+    <string name="gbstorage_duplicate_label">Duplicate</string>
     <string name="gbstorage_overwrite_existing">Overwrite existing</string>
     <string name="gbstorage_sync_duplicate_note">Already exists on GB Storage</string>
     <string name="gbstorage_keep">Keep / overwrite</string>

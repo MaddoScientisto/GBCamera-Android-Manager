@@ -21,6 +21,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.ProgressBar;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -68,6 +70,9 @@ public final class GbStorageSyncManager {
     private static final int BATCH_SIZE = 20;
     private static final int PREVIEW_THUMBNAIL_WIDTH = 80;
     private static final int PREVIEW_THUMBNAIL_HEIGHT = 72;
+    private static final String DUPLICATE_MODE_SKIP = "skip";
+    private static final String DUPLICATE_MODE_OVERWRITE = "overwrite";
+    private static final String DUPLICATE_MODE_DUPLICATE = "duplicate";
 
     private GbStorageSyncManager() {
     }
@@ -139,13 +144,15 @@ public final class GbStorageSyncManager {
     private static final class SyncPlan {
         final List<GbcImage> imagesToSync;
         final Set<String> overwriteHashes;
+        final String duplicateMode;
         final int selectedCount;
         final int overwriteCount;
         final int skippedCount;
 
-        SyncPlan(List<GbcImage> imagesToSync, Set<String> overwriteHashes, int selectedCount, int overwriteCount, int skippedCount) {
+        SyncPlan(List<GbcImage> imagesToSync, Set<String> overwriteHashes, String duplicateMode, int selectedCount, int overwriteCount, int skippedCount) {
             this.imagesToSync = imagesToSync;
             this.overwriteHashes = overwriteHashes;
+            this.duplicateMode = duplicateMode;
             this.selectedCount = selectedCount;
             this.overwriteCount = overwriteCount;
             this.skippedCount = skippedCount;
@@ -161,21 +168,21 @@ public final class GbStorageSyncManager {
         ReviewListAdapter(Context context, List<SyncPreviewItem> previewItems, Set<String> overwriteHashes) {
             this.context = context;
             this.previewItems = previewItems;
-            updateSelection(overwriteHashes);
+            updateSelection(overwriteHashes, DUPLICATE_MODE_SKIP);
         }
 
-        void updateSelection(Set<String> overwriteHashes) {
+        void updateSelection(Set<String> overwriteHashes, String duplicateMode) {
             visibleItems.clear();
             visibleStatuses.clear();
             for (SyncPreviewItem item : previewItems) {
-                boolean shouldInclude = !item.duplicate || overwriteHashes.contains(item.image.getHashCode());
+                boolean shouldInclude = !item.duplicate || !DUPLICATE_MODE_SKIP.equals(duplicateMode);
                 if (!shouldInclude) {
                     continue;
                 }
 
                 visibleItems.add(item);
                 visibleStatuses.add(item.duplicate
-                        ? context.getString(R.string.gbstorage_sync_overwrite_label)
+                        ? (DUPLICATE_MODE_OVERWRITE.equals(duplicateMode) ? context.getString(R.string.gbstorage_sync_overwrite_label) : context.getString(R.string.gbstorage_sync_duplicate_label))
                         : context.getString(R.string.gbstorage_sync_new_label));
             }
             notifyDataSetChanged();
@@ -382,11 +389,16 @@ public final class GbStorageSyncManager {
             duplicateHeader.setTextColor(Color.BLACK);
             root.addView(duplicateHeader);
 
-            Button overwriteAllButton = new Button(activity);
-            overwriteAllButton.setAllCaps(false);
-            LinearLayout.LayoutParams overwriteButtonParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            overwriteButtonParams.bottomMargin = dp(activity, 12);
-            root.addView(overwriteAllButton, overwriteButtonParams);
+            RadioGroup duplicateModeGroup = new RadioGroup(activity);
+            duplicateModeGroup.setOrientation(RadioGroup.HORIZONTAL);
+            RadioButton skipButton = buildDuplicateModeButton(activity, R.string.gbstorage_skip, DUPLICATE_MODE_SKIP);
+            RadioButton overwriteButton = buildDuplicateModeButton(activity, R.string.gbstorage_overwrite_label_short, DUPLICATE_MODE_OVERWRITE);
+            RadioButton duplicateButton = buildDuplicateModeButton(activity, R.string.gbstorage_duplicate_label, DUPLICATE_MODE_DUPLICATE);
+            duplicateModeGroup.addView(skipButton);
+            duplicateModeGroup.addView(overwriteButton);
+            duplicateModeGroup.addView(duplicateButton);
+            duplicateModeGroup.check(skipButton.getId());
+            root.addView(duplicateModeGroup);
 
             Map<String, SyncPreviewItem> previewItemsByHash = new LinkedHashMap<>();
             for (SyncPreviewItem previewItem : previewItems) {
@@ -400,12 +412,9 @@ public final class GbStorageSyncManager {
             contentLayout.setOrientation(LinearLayout.VERTICAL);
             duplicateScrollView.addView(contentLayout);
 
-            List<CheckBox> keepBoxes = new ArrayList<>();
             for (DuplicateMatch duplicate : duplicates) {
                 SyncPreviewItem previewItem = previewItemsByHash.get(duplicate.sourceHash);
-                CheckBox[] checkBoxHolder = new CheckBox[1];
-                ViewGroup row = buildPreviewRow(activity, previewItem, true, activity.getString(R.string.gbstorage_sync_duplicate_note), activity.getString(R.string.gbstorage_sync_overwrite_label), checkBoxHolder);
-                keepBoxes.add(checkBoxHolder[0]);
+                ViewGroup row = buildPreviewRow(activity, previewItem, false, activity.getString(R.string.gbstorage_sync_duplicate_note), activity.getString(R.string.gbstorage_skip), null);
                 contentLayout.addView(row);
             }
 
@@ -434,50 +443,23 @@ public final class GbStorageSyncManager {
             root.addView(reviewListView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
             final Runnable[] refreshReviewHolder = new Runnable[1];
-            boolean[] suppressRefresh = new boolean[] { false };
             refreshReviewHolder[0] = () -> {
-                SyncPlan syncPlan = buildSyncPlan(previewItems, duplicates, keepBoxes);
+                SyncPlan syncPlan = buildSyncPlan(previewItems, duplicates, getSelectedDuplicateMode(duplicateModeGroup));
                 summary.setText(activity.getString(R.string.gbstorage_sync_preview_counts, syncPlan.selectedCount, syncPlan.imagesToSync.size(), syncPlan.overwriteCount, syncPlan.skippedCount));
-                reviewAdapter.updateSelection(syncPlan.overwriteHashes);
+                reviewAdapter.updateSelection(syncPlan.overwriteHashes, syncPlan.duplicateMode);
                 boolean hasItemsToSync = !syncPlan.imagesToSync.isEmpty();
                 reviewListView.setVisibility(hasItemsToSync ? View.VISIBLE : View.GONE);
                 reviewEmptyView.setVisibility(hasItemsToSync ? View.GONE : View.VISIBLE);
-                overwriteAllButton.setText(syncPlan.overwriteCount > 0
-                        ? activity.getString(R.string.gbstorage_overwrite_none)
-                        : activity.getString(R.string.gbstorage_overwrite_all));
             };
 
-            for (CheckBox keepBox : keepBoxes) {
-                keepBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                    if (!suppressRefresh[0]) {
-                        refreshReviewHolder[0].run();
-                    }
-                });
-            }
-
-            overwriteAllButton.setOnClickListener(view -> {
-                boolean selectAll = true;
-                for (CheckBox keepBox : keepBoxes) {
-                    if (keepBox.isChecked()) {
-                        selectAll = false;
-                        break;
-                    }
-                }
-
-                suppressRefresh[0] = true;
-                for (CheckBox keepBox : keepBoxes) {
-                    keepBox.setChecked(selectAll);
-                }
-                suppressRefresh[0] = false;
-                refreshReviewHolder[0].run();
-            });
+            duplicateModeGroup.setOnCheckedChangeListener((group, checkedId) -> refreshReviewHolder[0].run());
 
             refreshReviewHolder[0].run();
 
             builder.setView(root);
             builder.setPositiveButton(activity.getString(R.string.gbstorage_sync_confirm), (dialog, which) -> {
-                SyncPlan syncPlan = buildSyncPlan(previewItems, duplicates, keepBoxes);
-                startTransfer(activity, syncPlan.imagesToSync, syncPlan.overwriteHashes, timestampSource, normalizeVirtualPath(virtualPathField.getText() == null ? "" : virtualPathField.getText().toString()));
+                SyncPlan syncPlan = buildSyncPlan(previewItems, duplicates, getSelectedDuplicateMode(duplicateModeGroup));
+                startTransfer(activity, syncPlan.imagesToSync, syncPlan.overwriteHashes, syncPlan.duplicateMode, timestampSource, normalizeVirtualPath(virtualPathField.getText() == null ? "" : virtualPathField.getText().toString()));
             });
             builder.setNegativeButton(activity.getString(R.string.cancel), (dialog, which) -> dialog.dismiss());
             builder.show();
@@ -507,7 +489,7 @@ public final class GbStorageSyncManager {
             for (SyncPreviewItem item : previewItems) {
                 imagesToSync.add(item.image);
             }
-            startTransfer(activity, imagesToSync, Collections.emptySet(), timestampSource, normalizeVirtualPath(virtualPathField.getText() == null ? "" : virtualPathField.getText().toString()));
+            startTransfer(activity, imagesToSync, Collections.emptySet(), DUPLICATE_MODE_SKIP, timestampSource, normalizeVirtualPath(virtualPathField.getText() == null ? "" : virtualPathField.getText().toString()));
         });
         builder.setNegativeButton(activity.getString(R.string.cancel), (dialog, which) -> dialog.dismiss());
         builder.show();
@@ -557,23 +539,23 @@ public final class GbStorageSyncManager {
             for (SyncPreviewItem item : itemsToSync) {
                 imagesToSync.add(item.image);
             }
-            startTransfer(activity, imagesToSync, overwriteHashes, timestampSource, "");
+            startTransfer(activity, imagesToSync, overwriteHashes, DUPLICATE_MODE_OVERWRITE, timestampSource, "");
         });
         builder.setNegativeButton(activity.getString(R.string.cancel), (dialog, which) -> dialog.dismiss());
         builder.show();
     }
 
-    private static SyncPlan buildSyncPlan(List<SyncPreviewItem> previewItems, List<DuplicateMatch> duplicates, List<CheckBox> keepBoxes) {
+    private static SyncPlan buildSyncPlan(List<SyncPreviewItem> previewItems, List<DuplicateMatch> duplicates, String duplicateMode) {
         Set<String> overwriteHashes = new HashSet<>();
-        for (int i = 0; i < duplicates.size(); i++) {
-            if (keepBoxes.get(i).isChecked()) {
-                overwriteHashes.add(duplicates.get(i).sourceHash);
+        if (DUPLICATE_MODE_OVERWRITE.equals(duplicateMode)) {
+            for (DuplicateMatch duplicate : duplicates) {
+                overwriteHashes.add(duplicate.sourceHash);
             }
         }
 
         List<GbcImage> imagesToSync = new ArrayList<>();
         for (SyncPreviewItem item : previewItems) {
-            if (!item.duplicate || overwriteHashes.contains(item.image.getHashCode())) {
+            if (!item.duplicate || !DUPLICATE_MODE_SKIP.equals(duplicateMode)) {
                 imagesToSync.add(item.image);
             }
         }
@@ -581,7 +563,22 @@ public final class GbStorageSyncManager {
         int selectedCount = previewItems.size();
         int overwriteCount = overwriteHashes.size();
         int skippedCount = selectedCount - imagesToSync.size();
-        return new SyncPlan(imagesToSync, overwriteHashes, selectedCount, overwriteCount, skippedCount);
+        return new SyncPlan(imagesToSync, overwriteHashes, duplicateMode, selectedCount, overwriteCount, skippedCount);
+    }
+
+    private static RadioButton buildDuplicateModeButton(Context context, int labelResourceId, String duplicateMode) {
+        RadioButton button = new RadioButton(context);
+        button.setId(View.generateViewId());
+        button.setText(context.getString(labelResourceId));
+        button.setTag(duplicateMode);
+        button.setPadding(0, 0, dp(context, 12), dp(context, 8));
+        return button;
+    }
+
+    private static String getSelectedDuplicateMode(RadioGroup duplicateModeGroup) {
+        View checkedView = duplicateModeGroup.findViewById(duplicateModeGroup.getCheckedRadioButtonId());
+        Object tag = checkedView == null ? null : checkedView.getTag();
+        return tag == null ? DUPLICATE_MODE_SKIP : String.valueOf(tag);
     }
 
     private static SyncPreviewItem findPreviewItem(List<SyncPreviewItem> previewItems, String sourceHash) {
@@ -737,7 +734,7 @@ public final class GbStorageSyncManager {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 
-    private static void startTransfer(Activity activity, List<GbcImage> selectedImages, Set<String> overwriteHashes, String timestampSource, String virtualPath) {
+    private static void startTransfer(Activity activity, List<GbcImage> selectedImages, Set<String> overwriteHashes, String duplicateMode, String timestampSource, String virtualPath) {
         SyncProgressDialog progressDialog = new SyncProgressDialog(activity, activity.getString(R.string.gbstorage_sync_in_progress));
         progressDialog.show();
 
@@ -758,7 +755,7 @@ public final class GbStorageSyncManager {
                             resolveBaseUrl(StaticValues.gbStorageServerAddress) + "/api/images/bulk",
                             "POST",
                             StaticValues.gbStorageApiKey,
-                            buildBulkRequest(batch, overwriteHashes, timestampSource, virtualPath, processedInBatch -> {
+                            buildBulkRequest(batch, overwriteHashes, duplicateMode, timestampSource, virtualPath, processedInBatch -> {
                                 int overallProcessed = batchBase + processedInBatch;
                                 String status = activity.getString(R.string.gbstorage_sync_progress, overallProcessed, total);
                                 String estimate = estimateRemaining(startTime, overallProcessed, total);
@@ -799,7 +796,7 @@ public final class GbStorageSyncManager {
         });
     }
 
-    private static JSONObject buildBulkRequest(List<GbcImage> batch, Set<String> overwriteHashes, String timestampSource, String virtualPath, ProgressUpdateCallback progressUpdateCallback) throws Exception {
+    private static JSONObject buildBulkRequest(List<GbcImage> batch, Set<String> overwriteHashes, String duplicateMode, String timestampSource, String virtualPath, ProgressUpdateCallback progressUpdateCallback) throws Exception {
         JSONObject payload = new JSONObject();
         JSONObject state = new JSONObject();
         JSONArray images = new JSONArray();
@@ -868,7 +865,7 @@ public final class GbStorageSyncManager {
         return new JSONObject()
                 .put("payload", payload)
                 .put("ownerId", "android-manager")
-                .put("skipDuplicates", true)
+                .put("duplicateMode", duplicateMode)
                 .put("overwriteSourceHashes", new JSONArray(new ArrayList<>(overwriteHashes)))
                 .put("source", SOURCE)
             .put("sourceFormat", SOURCE_FORMAT)
