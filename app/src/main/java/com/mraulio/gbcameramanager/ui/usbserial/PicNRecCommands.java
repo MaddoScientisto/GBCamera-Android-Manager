@@ -2,7 +2,7 @@ package com.mraulio.gbcameramanager.ui.usbserial;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -225,7 +225,7 @@ public class PicNRecCommands {
         void onDeviceInfoError(Exception exception);
     }
 
-    public static class DetectPicNRecAsyncTask extends AsyncTask<Void, Void, Exception> {
+    public static class DetectPicNRecAsyncTask extends AppTask<Void, Void, Exception> {
         private final UsbSerialPort port;
         private final DeviceInfoListener listener;
         private int reportedLastImageNumber;
@@ -258,7 +258,7 @@ public class PicNRecCommands {
         }
     }
 
-    public static class PreviewPicNRecAsyncTask extends AsyncTask<Void, Void, Exception> {
+    public static class PreviewPicNRecAsyncTask extends AppTask<Void, Void, Exception> {
         private final UsbSerialPort port;
         private final Context context;
         private final int imageNumber;
@@ -303,7 +303,7 @@ public class PicNRecCommands {
         }
     }
 
-    public static class ReadPicNRecAsyncTask extends AsyncTask<Void, Integer, Exception> {
+    public static class ReadPicNRecAsyncTask extends AppTask<Void, Integer, Exception> {
         private final UsbSerialPort port;
         private final Context context;
         private final TextView tv;

@@ -18,7 +18,7 @@ import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 import android.os.Bundle;
 
 import androidx.fragment.app.Fragment;
@@ -522,7 +522,7 @@ public class FramesFragment extends Fragment {
     }
 
 
-    private class DeleteFrameAsyncTask extends AsyncTask<Void, Void, Void> {
+    private class DeleteFrameAsyncTask extends AppTask<Void, Void, Void> {
 
         //To add the new palette as a parameter
         private final List<GbcFrame> gbcFramesList;

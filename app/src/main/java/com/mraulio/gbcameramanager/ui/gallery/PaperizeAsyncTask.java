@@ -7,7 +7,7 @@ import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 import android.view.animation.AccelerateInterpolator;
 import android.widget.ImageView;
 
@@ -15,7 +15,7 @@ import com.mraulio.gbcameramanager.utils.LoadingDialog;
 
 import java.util.List;
 
-public class PaperizeAsyncTask extends AsyncTask<Void, Void, Void> {
+public class PaperizeAsyncTask extends AppTask<Void, Void, Void> {
     private List<Bitmap> bitmapList;
     private Context context;
     private int paperColor;

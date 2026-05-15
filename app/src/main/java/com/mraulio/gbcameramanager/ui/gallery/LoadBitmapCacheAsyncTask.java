@@ -1,7 +1,7 @@
 package com.mraulio.gbcameramanager.ui.gallery;
 
 import android.graphics.Bitmap;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 
 import com.mraulio.gbcameramanager.db.ImageDataDao;
 import com.mraulio.gbcameramanager.gameboycameralib.codecs.ImageCodec;
@@ -16,7 +16,7 @@ import java.util.List;
 
 import javax.xml.transform.Result;
 
-public class LoadBitmapCacheAsyncTask extends AsyncTask<Void, Void, Result> {
+public class LoadBitmapCacheAsyncTask extends AppTask<Void, Void, Result> {
     private List<Integer> indexesToLoad;
     private AsyncTaskCompleteListener<Result> listener;
     private LoadingDialog loadDialog;

@@ -255,7 +255,8 @@
     <string name="btn_restore_db">Restore Database</string>
     <string name="toast_backup_db">Database backup finished</string>
     <string name="toast_restore_db">Database restore finished</string>
-    <string name="toast_manage_storage_db">Allow access to all files so database backups in Downloads can be restored.</string>
+    <string name="toast_manage_storage_db">Grant file access so the app can automatically find database backups in Downloads.</string>
+    <string name="toast_no_backups_found">No database backups were found. Select the DB Backup folder in Downloads.</string>
     <string name="dialog_restore_db_title">Select database to restore</string>
     <string name="dialog_confirm_restore_db">Restoring a database will reset all settings.\nMaking a database backup and Json exports is recommended.\nApp will reset.\nAre you sure? </string>
     <string name="as_imported_frame">As imported</string>

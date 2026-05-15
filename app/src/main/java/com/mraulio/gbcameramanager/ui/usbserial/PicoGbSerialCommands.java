@@ -2,7 +2,7 @@ package com.mraulio.gbcameramanager.ui.usbserial;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 import android.view.View;
 
 import com.hoho.android.usbserial.driver.UsbSerialPort;
@@ -513,7 +513,7 @@ public class PicoGbSerialCommands {
         void onError(Exception exception);
     }
 
-    public static class ReceivePicoGbSerialAsyncTask extends AsyncTask<Void, Object, Exception> {
+    public static class ReceivePicoGbSerialAsyncTask extends AppTask<Void, Object, Exception> {
         private final UsbSerialPort port;
         private final Context context;
         private final ReceiveListener listener;

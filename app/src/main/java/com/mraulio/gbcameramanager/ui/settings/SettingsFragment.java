@@ -4,10 +4,12 @@ import static com.mraulio.gbcameramanager.MainActivity.updateNavigationView;
 import static com.mraulio.gbcameramanager.utils.StaticValues.exportSquare;
 import static com.mraulio.gbcameramanager.utils.StaticValues.sortPalettesByUsage;
 import static com.mraulio.gbcameramanager.utils.Utils.backupDatabase;
+import static com.mraulio.gbcameramanager.utils.Utils.persistBackupTreeUri;
 import static com.mraulio.gbcameramanager.utils.Utils.restartApplication;
 import static com.mraulio.gbcameramanager.utils.Utils.showDbBackups;
 import static com.mraulio.gbcameramanager.utils.Utils.sortPalettes;
 
+import android.net.Uri;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -22,6 +24,8 @@ import android.widget.RadioButton;
 import android.widget.Spinner;
 import android.widget.Switch;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
 
@@ -37,6 +41,10 @@ public class SettingsFragment extends Fragment {
     private boolean userSelect = false;
     private boolean userSelectPage = false;
     private boolean userSelectLocale = false;
+    private final ActivityResultLauncher<Uri> backupTreePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.OpenDocumentTree(),
+            this::handleBackupTreeSelected
+    );
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -396,7 +404,9 @@ public class SettingsFragment extends Fragment {
         btnRestoreDB.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                showDbBackups(getContext(), getActivity());
+                if (!showDbBackups(getContext(), getActivity())) {
+                    backupTreePickerLauncher.launch(null);
+                }
             }
         });
 
@@ -407,6 +417,17 @@ public class SettingsFragment extends Fragment {
         editor.putString("language", languageCode);
         editor.commit();
         restartApplication(getContext());
+    }
+
+    private void handleBackupTreeSelected(Uri treeUri) {
+        if (treeUri == null) {
+            return;
+        }
+
+        persistBackupTreeUri(getContext(), treeUri);
+        if (!showDbBackups(getContext(), getActivity())) {
+            com.mraulio.gbcameramanager.utils.Utils.toast(getContext(), getString(R.string.toast_no_backups_found));
+        }
     }
 
 

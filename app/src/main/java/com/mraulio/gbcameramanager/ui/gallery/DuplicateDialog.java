@@ -9,7 +9,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.graphics.Bitmap;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 import android.widget.NumberPicker;
 
 import com.mraulio.gbcameramanager.R;
@@ -86,7 +86,7 @@ public class DuplicateDialog {
 
     }
 
-    private class CreateDuplicatesAsyncTask extends AsyncTask<Void, Void, Void> {
+    private class CreateDuplicatesAsyncTask extends AppTask<Void, Void, Void> {
         LoadingDialog loadDialogCache;
         int numberOfDuplicats;
 

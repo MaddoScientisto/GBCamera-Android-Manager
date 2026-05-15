@@ -8,7 +8,7 @@ import static com.mraulio.gbcameramanager.utils.Utils.gbcImagesList;
 import static com.mraulio.gbcameramanager.utils.Utils.retrieveTags;
 
 import android.app.Activity;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 
 import com.mraulio.gbcameramanager.R;
 import com.mraulio.gbcameramanager.db.ImageDao;
@@ -22,7 +22,7 @@ import com.mraulio.gbcameramanager.utils.Utils;
 import java.util.Collections;
 import java.util.List;
 
-public class DeleteImageAsyncTask extends AsyncTask<Void, Void, Void> {
+public class DeleteImageAsyncTask extends AppTask<Void, Void, Void> {
     //        private int imageIndex;
     private List<Integer> listImagesIndexes;
     private Activity activity;

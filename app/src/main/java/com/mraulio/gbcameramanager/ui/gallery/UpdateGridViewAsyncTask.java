@@ -7,7 +7,7 @@ import static com.mraulio.gbcameramanager.ui.gallery.GalleryFragment.updatingFro
 import static com.mraulio.gbcameramanager.ui.gallery.GalleryUtils.frameChange;
 import static com.mraulio.gbcameramanager.ui.gallery.MainImageDialog.isChanging;
 import android.graphics.Bitmap;
-import android.os.AsyncTask;
+import com.mraulio.gbcameramanager.utils.AppTask;
 
 import com.mraulio.gbcameramanager.R;
 import com.mraulio.gbcameramanager.db.ImageDataDao;
@@ -19,7 +19,7 @@ import com.mraulio.gbcameramanager.utils.Utils;
 import java.util.ArrayList;
 import java.util.List;
 
-public class UpdateGridViewAsyncTask extends AsyncTask<Void, Void, Void> {
+public class UpdateGridViewAsyncTask extends AppTask<Void, Void, Void> {
 
     //I could add a isCancelled flag
     @Override
