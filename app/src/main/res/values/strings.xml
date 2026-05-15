@@ -121,6 +121,13 @@
     <string name="picnrec_no_images">No importable PicNRec images found.</string>
     <string name="picnrec_error">Error reading PicNRec: </string>
     <string name="btn_import_picnrec_range">Import PicNRec range</string>
+    <string name="picnrec_clear_button">Clear PicNRec memory</string>
+    <string name="picnrec_clearing">Clearing PicNRec memory...</string>
+    <string name="picnrec_cleared">PicNRec last photo index set to 0.</string>
+    <string name="picnrec_clear_failed">Error clearing PicNRec: </string>
+    <string name="picnrec_clear_confirm_title">Clear PicNRec memory?</string>
+    <string name="picnrec_clear_confirm_message">This does not erase the underlying photo data on the PicNRec. It only sets the last photo index to 0, so the device appears empty until new photos are taken.</string>
+    <string name="picnrec_clear_confirm_action">Clear memory</string>
     <string name="picnrec_start_image">Start image</string>
     <string name="picnrec_end_image">End image</string>
     <string name="picnrec_first">First</string>

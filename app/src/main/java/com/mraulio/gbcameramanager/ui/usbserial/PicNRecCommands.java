@@ -32,6 +32,7 @@ public class PicNRecCommands {
     private static final int BLOCK_TIMEOUT_MS = 500;
     private static final int RETRY_COUNT = 3;
     private static final int RETRY_DELAY_MS = 200;
+    private static final byte CLEAR_METADATA_ACK = 0x31;
     private static final byte[] BLACK_TILE = new byte[16];
 
     static {
@@ -137,6 +138,16 @@ public class PicNRecCommands {
         return getEffectiveLastImageIndex(readReportedLastImageNumber(port));
     }
 
+    public static void clearMemory(UsbSerialPort port) throws Exception {
+        flushInput(port);
+        writeCommand(port, "k");
+        byte[] acknowledgement = readExactly(port, 1, BLOCK_TIMEOUT_MS);
+        if (acknowledgement[0] != CLEAR_METADATA_ACK) {
+            throw new IllegalStateException("Unexpected clear acknowledgement: 0x" + Integer.toHexString(acknowledgement[0] & 0xFF));
+        }
+        flushInput(port);
+    }
+
     public static byte[] readImage(UsbSerialPort port, int imageNumber) throws Exception {
         Exception lastException = null;
         for (int attempt = 1; attempt <= RETRY_COUNT; attempt++) {
@@ -225,6 +236,11 @@ public class PicNRecCommands {
         void onDeviceInfoError(Exception exception);
     }
 
+    public interface ClearMemoryListener {
+        void onCleared();
+        void onClearError(Exception exception);
+    }
+
     public static class DetectPicNRecAsyncTask extends AppTask<Void, Void, Exception> {
         private final UsbSerialPort port;
         private final DeviceInfoListener listener;
@@ -300,6 +316,38 @@ public class PicNRecCommands {
             }
             imageView.setImageBitmap(bitmap);
             statusView.setText(context.getString(R.string.picnrec_preview_loaded) + imageNumber + ".");
+        }
+    }
+
+    public static class ClearPicNRecAsyncTask extends AppTask<Void, Void, Exception> {
+        private final UsbSerialPort port;
+        private final ClearMemoryListener listener;
+
+        public ClearPicNRecAsyncTask(UsbSerialPort port, ClearMemoryListener listener) {
+            this.port = port;
+            this.listener = listener;
+        }
+
+        @Override
+        protected Exception doInBackground(Void... voids) {
+            try {
+                if (port == null) {
+                    throw new IllegalStateException("No USB serial device found");
+                }
+                clearMemory(port);
+            } catch (Exception e) {
+                return e;
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Exception exception) {
+            if (exception != null) {
+                listener.onClearError(exception);
+                return;
+            }
+            listener.onCleared();
         }
     }
 

@@ -172,6 +172,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         FULL_ROM,
         PICNREC_MODE,
         READ_PICNREC,
+        CLEAR_PICNREC,
         PICO_GB_SERIAL_MODE
     }
 
@@ -343,6 +344,10 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         btnDelSav.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                if (isPicNRecModeActive()) {
+                    showPicNRecClearConfirmation();
+                    return;
+                }
                 AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
                 String title = isRomExtracted ? getString(R.string.delete_photo_folder_dialog) : getString(R.string.delete_sav_dialog);
                 builder.setTitle(title);
@@ -620,6 +625,11 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
                     new PicNRecCommands.ReadPicNRecAsyncTask(port, getContext(), tv, parsePicNRecNumber(etPicNRecStart), parsePicNRecNumber(etPicNRecEnd)).execute();
                 }
                 break;
+            case CLEAR_PICNREC:
+                if (ensurePicNRecConnection(PendingUsbAction.CLEAR_PICNREC)) {
+                    clearPicNRecMemory();
+                }
+                break;
             case PICO_GB_SERIAL_MODE:
                 picoGbSerialMode();
                 break;
@@ -800,7 +810,8 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         btnFullRom.setVisibility(View.GONE);
         spSaveType.setVisibility(View.GONE);
         btnAddImages.setVisibility(View.GONE);
-        btnDelSav.setVisibility(View.GONE);
+        btnDelSav.setText(getString(R.string.picnrec_clear_button));
+        btnDelSav.setVisibility(View.VISIBLE);
         layoutCb.setVisibility(View.GONE);
         if (!ensurePicNRecConnection(PendingUsbAction.PICNREC_MODE)) {
             return;
@@ -1086,9 +1097,10 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             public void onDeviceInfo(int reportedLastImageNumber) {
                 picNRecReportedLastImageNumber = reportedLastImageNumber;
                 picNRecEffectiveLastImageIndex = PicNRecCommands.getEffectiveLastImageIndex(reportedLastImageNumber);
+                int displayLastUsableSlot = Math.max(0, picNRecEffectiveLastImageIndex);
                 int defaultSlot = getPicNRecUiLastImageNumber();
                 tv.setText("");
-                tvPicNRecDeviceInfo.setText(getString(R.string.picnrec_device_info, defaultSlot, PicNRecCommands.MAX_SUPPORTED_IMAGE_INDEX));
+                tvPicNRecDeviceInfo.setText(getString(R.string.picnrec_device_info, displayLastUsableSlot, PicNRecCommands.MAX_SUPPORTED_IMAGE_INDEX));
                 etPicNRecStart.setText(String.valueOf(PicNRecCommands.FIRST_IMAGE_SLOT));
                 etPicNRecEnd.setText(String.valueOf(defaultSlot));
                 setPicNRecPreviewImageNumber(defaultSlot, true);
@@ -1099,6 +1111,53 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
                 tv.setText(getString(R.string.picnrec_error) + exception.toString());
             }
         }).execute();
+    }
+
+    private boolean isPicNRecModeActive() {
+        return layoutPicNRecControls != null && layoutPicNRecControls.getVisibility() == View.VISIBLE;
+    }
+
+    private void showPicNRecClearConfirmation() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
+        builder.setTitle(R.string.picnrec_clear_confirm_title);
+        builder.setMessage(R.string.picnrec_clear_confirm_message);
+        builder.setPositiveButton(R.string.picnrec_clear_confirm_action, (dialog, which) -> clearPicNRecMemory());
+        builder.setNegativeButton(R.string.cancel, (dialog, which) -> {
+        });
+        builder.create().show();
+    }
+
+    private void clearPicNRecMemory() {
+        try {
+            if (port == null || !port.isOpen()) {
+                if (!ensurePicNRecConnection(PendingUsbAction.CLEAR_PICNREC)) {
+                    return;
+                }
+            }
+            btnDelSav.setEnabled(false);
+            tv.setText(getString(R.string.picnrec_clearing));
+            new PicNRecCommands.ClearPicNRecAsyncTask(port, new PicNRecCommands.ClearMemoryListener() {
+                @Override
+                public void onCleared() {
+                    btnDelSav.setEnabled(true);
+                    toast(getContext(), getString(R.string.picnrec_cleared));
+                    detectPicNRecDevice();
+                }
+
+                @Override
+                public void onClearError(Exception exception) {
+                    btnDelSav.setEnabled(true);
+                    String message = getString(R.string.picnrec_clear_failed) + exception.toString();
+                    tv.setText(message);
+                    Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
+                }
+            }).execute();
+        } catch (Exception e) {
+            btnDelSav.setEnabled(true);
+            String message = getString(R.string.picnrec_clear_failed) + e.toString();
+            tv.setText(message);
+            Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
+        }
     }
 
     private int parsePicNRecNumber(EditText editText) throws NumberFormatException {
