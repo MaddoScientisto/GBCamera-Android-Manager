@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_gbstorage_settings"
+        android:icon="@drawable/ic_settings"
+        android:title="@string/gbstorage_settings"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/action_gbstorage_filter"
+        android:icon="@drawable/ic_filter"
+        android:title="@string/menu_filter"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/action_gbstorage_sort"
+        android:icon="@drawable/ic_sort"
+        android:title="@string/menu_sort"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/action_gbstorage_refresh"
+        android:title="@string/gbstorage_remote_refresh"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_gbstorage_download_selected"
+        android:title="@string/gbstorage_remote_sync_selected"
+        android:visible="false"
+        app:showAsAction="never" />
+</menu>

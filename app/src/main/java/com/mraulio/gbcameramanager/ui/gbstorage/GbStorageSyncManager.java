@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Handler;
@@ -32,8 +33,10 @@ import com.mraulio.gbcameramanager.db.ImageDataDao;
 import com.mraulio.gbcameramanager.gameboycameralib.codecs.ImageCodec;
 import com.mraulio.gbcameramanager.model.GbcPalette;
 import com.mraulio.gbcameramanager.model.GbcImage;
+import com.mraulio.gbcameramanager.model.ImageData;
 import com.mraulio.gbcameramanager.ui.gallery.GalleryUtils;
 import com.mraulio.gbcameramanager.ui.gallery.GalleryFragment;
+import com.mraulio.gbcameramanager.utils.DiskCache;
 import com.mraulio.gbcameramanager.utils.LoadingDialog;
 import com.mraulio.gbcameramanager.utils.StaticValues;
 import com.mraulio.gbcameramanager.utils.Utils;
@@ -42,14 +45,17 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.URLEncoder;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -59,11 +65,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.zip.Inflater;
 
 public final class GbStorageSyncManager {
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
+    private static final ExecutorService PREVIEW_EXECUTOR = Executors.newFixedThreadPool(4);
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final String SOURCE = "GBCamera Android Manager";
     private static final String SOURCE_FORMAT = "android-manager-v1";
@@ -79,6 +88,62 @@ public final class GbStorageSyncManager {
 
     public interface ConnectionResultCallback {
         void onResult(ConnectionResult result);
+    }
+
+    public interface RemotePageCallback {
+        void onResult(RemotePageResult result);
+    }
+
+    public interface RemoteImageCallback {
+        void onResult(RemoteImageResult result);
+    }
+
+    public interface RemotePreviewCallback {
+        void onResult(RemotePreviewResult result);
+    }
+
+    public static final class RemotePageResult {
+        public final boolean success;
+        public final String message;
+        public final List<RemoteGbStorageImage> images;
+        public final String nextCursor;
+        public final int pageSize;
+        public final int totalCount;
+
+        RemotePageResult(boolean success, String message, List<RemoteGbStorageImage> images, String nextCursor, int pageSize, int totalCount) {
+            this.success = success;
+            this.message = message;
+            this.images = images;
+            this.nextCursor = nextCursor;
+            this.pageSize = pageSize;
+            this.totalCount = totalCount;
+        }
+    }
+
+    public static final class RemoteImageResult {
+        public final boolean success;
+        public final String message;
+        public final RemoteGbStorageImage remoteImage;
+        public final Bitmap bitmap;
+
+        RemoteImageResult(boolean success, String message, RemoteGbStorageImage remoteImage, Bitmap bitmap) {
+            this.success = success;
+            this.message = message;
+            this.remoteImage = remoteImage;
+            this.bitmap = bitmap;
+        }
+    }
+
+    public static final class RemotePreviewResult {
+        public final boolean success;
+        public final String id;
+        public final Bitmap bitmap;
+
+        RemotePreviewResult(boolean success, String id, Bitmap bitmap) {
+            this.success = success;
+            this.id = id;
+            this.bitmap = bitmap;
+        }
     }
 
     private static final class SyncStatusSummary {
@@ -288,6 +353,208 @@ public final class GbStorageSyncManager {
                 MAIN.post(() -> callback.onResult(new ConnectionResult(false, context.getString(R.string.gbstorage_test_failed) + "\n" + (exception.getMessage() == null ? exception.toString() : exception.getMessage()))));
             }
         });
+    }
+
+    public static void fetchRemotePage(Context context, int pageNumber, int limit, String sort, List<String> tags, RemotePageCallback callback) {
+        if (TextUtils.isEmpty(StaticValues.gbStorageServerAddress) || TextUtils.isEmpty(StaticValues.gbStorageApiKey)) {
+            MAIN.post(() -> callback.onResult(new RemotePageResult(false, context.getString(R.string.gbstorage_test_failed), Collections.emptyList(), null, limit, 0)));
+            return;
+        }
+
+        EXECUTOR.execute(() -> {
+            try {
+                StringBuilder urlBuilder = new StringBuilder(resolveBaseUrl(StaticValues.gbStorageServerAddress))
+                        .append("/api/images?limit=").append(Math.max(1, limit))
+                        .append("&page=").append(Math.max(1, pageNumber))
+                        .append("&sort=").append(urlEncode(TextUtils.isEmpty(sort) ? "created-desc" : sort));
+                if (tags != null) {
+                    for (String tag : tags) {
+                        if (!TextUtils.isEmpty(tag)) {
+                            urlBuilder.append("&tags=").append(urlEncode(tag.trim()));
+                        }
+                    }
+                }
+
+                HttpResult result = executeRequest(urlBuilder.toString(), "GET", StaticValues.gbStorageApiKey, null);
+                if (result.responseCode < 200 || result.responseCode >= 300) {
+                    throw new IOException(result.responseBody);
+                }
+
+                JSONObject response = new JSONObject(result.responseBody);
+                JSONArray items = response.optJSONArray("items");
+                List<RemoteGbStorageImage> remoteImages = new ArrayList<>();
+                if (items != null) {
+                    for (int i = 0; i < items.length(); i++) {
+                        JSONObject item = items.getJSONObject(i);
+                        GbcImage image = new GbcImage();
+                        image.setHashCode(item.optString("sourceHash"));
+                        image.setName(item.optString("name"));
+                        image.setRotation(item.optInt("rotation", 0));
+                        image.setCreationDate(parseRemoteDate(item.optString("createdAtUtc")));
+                        image.setTags(jsonArrayToTags(item.optJSONArray("tags")));
+                        image.setGbStorageSyncStatus(localContainsHash(image.getHashCode()) ? GbcImage.GB_STORAGE_SYNCED : GbcImage.GB_STORAGE_SYNC_NOT_SYNCED);
+                        RemoteGbStorageImage remoteImage = new RemoteGbStorageImage(item.optString("id"), image);
+                        remoteImage.previewBitmap = getCachedRemotePreview(context, remoteImage.id);
+                        remoteImages.add(remoteImage);
+                    }
+                }
+
+                MAIN.post(() -> callback.onResult(new RemotePageResult(
+                        true,
+                        "",
+                        remoteImages,
+                        response.optString("nextCursor", null),
+                        response.optInt("pageSize", limit),
+                        response.optInt("totalCount", remoteImages.size()))));
+            } catch (Exception exception) {
+                MAIN.post(() -> callback.onResult(new RemotePageResult(false, exception.getMessage(), Collections.emptyList(), null, limit, 0)));
+            }
+        });
+    }
+
+    public static void fetchRemotePreview(Context context, RemoteGbStorageImage remoteImage, RemotePreviewCallback callback) {
+        if (remoteImage == null || TextUtils.isEmpty(remoteImage.id)) {
+            MAIN.post(() -> callback.onResult(new RemotePreviewResult(false, null, null)));
+            return;
+        }
+        PREVIEW_EXECUTOR.execute(() -> {
+            Bitmap bitmap = getCachedRemotePreview(context, remoteImage.id);
+            if (bitmap == null) {
+                bitmap = fetchRemotePreviewBitmap(remoteImage.id, null, null);
+                if (bitmap != null) {
+                    putCachedRemotePreview(context, remoteImage.id, bitmap);
+                }
+            }
+            Bitmap finalBitmap = bitmap;
+            MAIN.post(() -> callback.onResult(new RemotePreviewResult(finalBitmap != null, remoteImage.id, finalBitmap)));
+        });
+    }
+
+    public static void fetchRemoteImage(Context context, RemoteGbStorageImage listImage, RemoteImageCallback callback) {
+        EXECUTOR.execute(() -> {
+            try {
+                RemoteGbStorageImage detailedImage = fetchRemoteImageInternal(listImage);
+                Bitmap bitmap = createThumbnailBitmap(context, detailedImage.image);
+                if (bitmap != null) {
+                    Utils.imageBitmapCache.put(detailedImage.image.getHashCode(), bitmap);
+                }
+                MAIN.post(() -> callback.onResult(new RemoteImageResult(true, "", detailedImage, bitmap)));
+            } catch (Exception exception) {
+                MAIN.post(() -> callback.onResult(new RemoteImageResult(false, exception.getMessage(), listImage, null)));
+            }
+        });
+    }
+
+    public static void downloadRemoteImage(Context context, RemoteGbStorageImage listImage, RemoteImageCallback callback) {
+        EXECUTOR.execute(() -> {
+            try {
+                RemoteGbStorageImage detailedImage = fetchRemoteImageInternal(listImage);
+                GbcImage gbcImage = detailedImage.image;
+                if (localContainsHash(gbcImage.getHashCode())) {
+                    MAIN.post(() -> callback.onResult(new RemoteImageResult(false, context.getString(R.string.image_exists), detailedImage, null)));
+                    return;
+                }
+
+                Bitmap bitmap = createGalleryBitmap(gbcImage);
+                if (bitmap == null) {
+                    throw new IOException(context.getString(R.string.gbstorage_remote_download_failed));
+                }
+
+                ImageData imageData = new ImageData();
+                imageData.setImageId(gbcImage.getHashCode());
+                imageData.setData(gbcImage.getImageBytes());
+                gbcImage.setGbStorageSyncStatus(GbcImage.GB_STORAGE_SYNCED);
+                StaticValues.db.imageDao().insert(gbcImage);
+                StaticValues.db.imageDataDao().insert(imageData);
+                Utils.gbcImagesList.add(gbcImage);
+                Utils.imageBitmapCache.put(gbcImage.getHashCode(), bitmap);
+                if (GalleryFragment.diskCache != null) {
+                    GalleryFragment.diskCache.put(gbcImage.getHashCode(), bitmap);
+                }
+                Utils.retrieveTags(Utils.gbcImagesList);
+                MAIN.post(() -> callback.onResult(new RemoteImageResult(true, context.getString(R.string.gbstorage_remote_downloaded), detailedImage, bitmap)));
+            } catch (Exception exception) {
+                MAIN.post(() -> callback.onResult(new RemoteImageResult(false, exception.getMessage(), listImage, null)));
+            }
+        });
+    }
+
+    private static RemoteGbStorageImage fetchRemoteImageInternal(RemoteGbStorageImage listImage) throws Exception {
+        HttpResult result = executeRequest(
+                resolveBaseUrl(StaticValues.gbStorageServerAddress) + "/api/images/" + urlEncode(listImage.id) + "?exportProfile=android-manager-v1",
+                "GET",
+                StaticValues.gbStorageApiKey,
+                null);
+        if (result.responseCode < 200 || result.responseCode >= 300) {
+            throw new IOException(result.responseBody);
+        }
+
+        JSONObject response = new JSONObject(result.responseBody);
+        JSONObject payload = response.getJSONObject("payload");
+        JSONArray images = payload.getJSONObject("state").getJSONArray("images");
+        JSONObject imageJson = images.getJSONObject(0);
+
+        GbcImage image = new GbcImage();
+        image.setHashCode(imageJson.optString("hash", response.optString("sourceHash")));
+        image.setName(imageJson.optString("title", response.optString("name")));
+        image.setCreationDate(parseRemoteDate(imageJson.optString("created", response.optString("createdAtUtc"))));
+        image.setPaletteId(optStringOrDefault(imageJson, "palette", StaticValues.defaultPaletteId));
+        image.setFramePaletteId(optStringOrDefault(imageJson, "framePalette", StaticValues.defaultPaletteId));
+        image.setFrameId(emptyToNull(imageJson.optString("frame", null)));
+        image.setInvertPalette(imageJson.optBoolean("invertPalette", false));
+        image.setInvertFramePalette(imageJson.optBoolean("invertFramePalette", false));
+        image.setLockFrame(imageJson.optBoolean("lockFrame", false));
+        image.setRotation(imageJson.optInt("rotation", response.optInt("rotation", 0)));
+        image.setTags(jsonArrayToTags(imageJson.optJSONArray("tags")));
+        image.setImageMetadata(jsonObjectToMap(imageJson.optJSONObject("meta")));
+        image.setImageBytes(decodeCompressedTileBytes(payload.optString(image.getHashCode())));
+        image.setGbStorageSyncStatus(localContainsHash(image.getHashCode()) ? GbcImage.GB_STORAGE_SYNCED : GbcImage.GB_STORAGE_SYNC_NOT_SYNCED);
+        RemoteGbStorageImage remoteImage = new RemoteGbStorageImage(listImage.id, image);
+        remoteImage.previewBitmap = listImage.previewBitmap;
+        return remoteImage;
+    }
+
+    private static Bitmap fetchRemotePreviewBitmap(String id, String imagePaletteId, String framePaletteId) {
+        try {
+            StringBuilder urlBuilder = new StringBuilder(resolveBaseUrl(StaticValues.gbStorageServerAddress))
+                    .append("/api/images/").append(urlEncode(id)).append("/preview");
+            if (!TextUtils.isEmpty(imagePaletteId) || !TextUtils.isEmpty(framePaletteId)) {
+                urlBuilder.append("?");
+                if (!TextUtils.isEmpty(imagePaletteId)) {
+                    urlBuilder.append("imagePaletteId=").append(urlEncode(imagePaletteId));
+                }
+                if (!TextUtils.isEmpty(framePaletteId)) {
+                    if (!TextUtils.isEmpty(imagePaletteId)) {
+                        urlBuilder.append("&");
+                    }
+                    urlBuilder.append("framePaletteId=").append(urlEncode(framePaletteId));
+                }
+            }
+            BinaryHttpResult result = executeBinaryRequest(urlBuilder.toString(), StaticValues.gbStorageApiKey);
+            if (result.responseCode >= 200 && result.responseCode < 300) {
+                return BitmapFactory.decodeByteArray(result.body, 0, result.body.length);
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private static Bitmap getCachedRemotePreview(Context context, String id) {
+        if (context == null || TextUtils.isEmpty(id)) {
+            return null;
+        }
+        return new DiskCache(context).get(remotePreviewCacheKey(id));
+    }
+
+    private static void putCachedRemotePreview(Context context, String id, Bitmap bitmap) {
+        if (context == null || TextUtils.isEmpty(id) || bitmap == null) {
+            return;
+        }
+        new DiskCache(context).put(remotePreviewCacheKey(id), bitmap);
+    }
+
+    private static String remotePreviewCacheKey(String id) {
+        return "gbstorage_preview_" + Base64.encodeToString(id.getBytes(StandardCharsets.UTF_8), Base64.URL_SAFE | Base64.NO_WRAP);
     }
 
     public static void startSelectionSync(Activity activity, List<Integer> selectedIndexes, List<GbcImage> filteredGbcImages) {
@@ -701,6 +968,21 @@ public final class GbStorageSyncManager {
         return Bitmap.createScaledBitmap(bitmap, PREVIEW_THUMBNAIL_WIDTH, scaledHeight, false);
     }
 
+    private static Bitmap createGalleryBitmap(GbcImage gbcImage) throws IOException {
+        byte[] imageBytes = resolveImageBytes(gbcImage);
+        if (imageBytes == null || imageBytes.length == 0) {
+            return null;
+        }
+
+        return GalleryUtils.frameChange(
+                gbcImage,
+                gbcImage.getFrameId(),
+                gbcImage.isInvertPalette(),
+                gbcImage.isInvertFramePalette(),
+                gbcImage.isLockFrame(),
+                null);
+    }
+
     private static byte[] resolveImageBytes(GbcImage gbcImage) {
         if (gbcImage.getImageBytes() != null && gbcImage.getImageBytes().length > 0) {
             return gbcImage.getImageBytes();
@@ -1068,6 +1350,124 @@ public final class GbStorageSyncManager {
         }
     }
 
+    private static BinaryHttpResult executeBinaryRequest(String url, String apiKey) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+        connection.setConnectTimeout(15000);
+        connection.setReadTimeout(30000);
+        connection.setRequestMethod("GET");
+        connection.setRequestProperty("Accept", "image/png");
+        connection.setRequestProperty("X-Api-Key", apiKey.trim());
+        int responseCode = connection.getResponseCode();
+        InputStream inputStream = responseCode >= 200 && responseCode < 300 ? connection.getInputStream() : connection.getErrorStream();
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        if (inputStream != null) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, read);
+            }
+            inputStream.close();
+        }
+        return new BinaryHttpResult(responseCode, outputStream.toByteArray());
+    }
+
+    private static String urlEncode(String value) throws Exception {
+        return URLEncoder.encode(value == null ? "" : value, "UTF-8").replace("+", "%20");
+    }
+
+    private static boolean localContainsHash(String hash) {
+        if (TextUtils.isEmpty(hash) || Utils.gbcImagesList == null) {
+            return false;
+        }
+        for (GbcImage image : Utils.gbcImagesList) {
+            if (hash.equals(image.getHashCode())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static HashSet<String> jsonArrayToTags(JSONArray tagsJson) {
+        HashSet<String> tags = new HashSet<>();
+        if (tagsJson == null) {
+            return tags;
+        }
+        for (int i = 0; i < tagsJson.length(); i++) {
+            String tag = tagsJson.optString(i);
+            if (!TextUtils.isEmpty(tag)) {
+                tags.add(tag);
+            }
+        }
+        return tags;
+    }
+
+    private static LinkedHashMap jsonObjectToMap(JSONObject jsonObject) {
+        LinkedHashMap<String, Object> map = new LinkedHashMap<>();
+        if (jsonObject == null) {
+            return map;
+        }
+        JSONArray names = jsonObject.names();
+        if (names == null) {
+            return map;
+        }
+        for (int i = 0; i < names.length(); i++) {
+            String key = names.optString(i);
+            map.put(key, jsonObject.opt(key));
+        }
+        return map;
+    }
+
+    private static String optStringOrDefault(JSONObject object, String key, String defaultValue) {
+        String value = object.optString(key, defaultValue);
+        return TextUtils.isEmpty(value) ? defaultValue : value;
+    }
+
+    private static String emptyToNull(String value) {
+        return TextUtils.isEmpty(value) ? null : value;
+    }
+
+    private static Date parseRemoteDate(String value) {
+        if (TextUtils.isEmpty(value)) {
+            return new Date();
+        }
+        String[] patterns = new String[]{"yyyy-MM-dd'T'HH:mm:ss.SSSSSSSXXX", "yyyy-MM-dd'T'HH:mm:ss.SSSXXX", "yyyy-MM-dd'T'HH:mm:ssXXX", "yyyy-MM-dd HH:mm:ss:SSS"};
+        for (String pattern : patterns) {
+            try {
+                SimpleDateFormat format = new SimpleDateFormat(pattern, Locale.US);
+                format.setTimeZone(TimeZone.getTimeZone("UTC"));
+                return format.parse(value);
+            } catch (ParseException ignored) {
+            }
+        }
+        return new Date();
+    }
+
+    private static byte[] decodeCompressedTileBytes(String rawData) throws Exception {
+        if (TextUtils.isEmpty(rawData)) {
+            return new byte[0];
+        }
+        byte[] compressed = rawData.getBytes(StandardCharsets.ISO_8859_1);
+        Inflater inflater = new Inflater();
+        inflater.setInput(compressed);
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        byte[] buffer = new byte[4096];
+        while (!inflater.finished()) {
+            int count = inflater.inflate(buffer);
+            if (count == 0 && inflater.needsInput()) {
+                break;
+            }
+            outputStream.write(buffer, 0, count);
+        }
+        inflater.end();
+        String inflated = outputStream.toString("UTF-8");
+        String hex = inflated.replaceAll("[^0-9A-Fa-f]", "");
+        byte[] bytes = new byte[hex.length() / 2];
+        for (int i = 0; i < bytes.length; i++) {
+            bytes[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+        }
+        return bytes;
+    }
+
     private static final class HttpResult {
         final int responseCode;
         final String responseBody;
@@ -1075,6 +1475,16 @@ public final class GbStorageSyncManager {
         HttpResult(int responseCode, String responseBody) {
             this.responseCode = responseCode;
             this.responseBody = responseBody;
+        }
+    }
+
+    private static final class BinaryHttpResult {
+        final int responseCode;
+        final byte[] body;
+
+        BinaryHttpResult(int responseCode, byte[] body) {
+            this.responseCode = responseCode;
+            this.body = body;
         }
     }
 }

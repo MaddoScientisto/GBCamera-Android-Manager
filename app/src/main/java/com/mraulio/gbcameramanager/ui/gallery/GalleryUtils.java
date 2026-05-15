@@ -42,6 +42,8 @@ import static com.mraulio.gbcameramanager.utils.Utils.tagsHash;
 import static com.mraulio.gbcameramanager.utils.Utils.toast;
 import static com.mraulio.gbcameramanager.utils.Utils.transparentBitmap;
 
+import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
@@ -245,11 +247,11 @@ public class GalleryUtils {
         return sb.toString();
     }
 
-    static void shareImage(List<GbcImage> gbcImages, Context context, boolean crop) {
+    public static void shareImage(List<GbcImage> gbcImages, Context context, boolean crop) {
         shareImage(gbcImages, context, crop, ExportOptions.fromStaticValues());
     }
 
-    static void shareImage(List<GbcImage> gbcImages, Context context, boolean crop, ExportOptions options) {
+    public static void shareImage(List<GbcImage> gbcImages, Context context, boolean crop, ExportOptions options) {
         ArrayList<Uri> imageUris = new ArrayList<>();
         FileOutputStream fileOutputStream = null;
 
@@ -288,6 +290,60 @@ public class GalleryUtils {
                 }
             }
         }
+    }
+
+    public static void showExportOptionsDialog(Activity activity, Context context, List<GbcImage> images, boolean crop, boolean share) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        View exportView = activity.getLayoutInflater().inflate(R.layout.dialog_export_options, null);
+        builder.setView(exportView);
+        builder.setTitle(share ? R.string.export_dialog_title_share : R.string.export_dialog_title_save);
+        builder.setNegativeButton(R.string.cancel, null);
+
+        RadioButton rbExportPng = exportView.findViewById(R.id.rbExportPng);
+        RadioButton rbExportTxt = exportView.findViewById(R.id.rbExportTxt);
+        CheckBox cbExportMetadata = exportView.findViewById(R.id.cbExportMetadataDialog);
+        CheckBox cbExportSquare = exportView.findViewById(R.id.cbExportSquareDialog);
+        TextView tvExportSizePrompt = exportView.findViewById(R.id.tvExportSizePrompt);
+
+        rbExportPng.setChecked(StaticValues.exportPng);
+        rbExportTxt.setChecked(!StaticValues.exportPng);
+        cbExportMetadata.setChecked(StaticValues.exportMetadata);
+        cbExportSquare.setChecked(StaticValues.exportSquare);
+
+        Runnable updatePngControls = () -> {
+            boolean exportPng = rbExportPng.isChecked();
+            cbExportMetadata.setEnabled(exportPng);
+            cbExportSquare.setEnabled(exportPng);
+            tvExportSizePrompt.setEnabled(exportPng);
+        };
+        rbExportPng.setOnClickListener(v -> updatePngControls.run());
+        rbExportTxt.setOnClickListener(v -> updatePngControls.run());
+        updatePngControls.run();
+
+        AlertDialog exportDialog = builder.create();
+        int[] buttonIds = new int[]{
+                R.id.btnExport1x, R.id.btnExport2x, R.id.btnExport3x, R.id.btnExport4x, R.id.btnExport5x,
+                R.id.btnExport6x, R.id.btnExport7x, R.id.btnExport8x, R.id.btnExport9x, R.id.btnExport10x
+        };
+        for (int i = 0; i < buttonIds.length; i++) {
+            Button sizeButton = exportView.findViewById(buttonIds[i]);
+            final int exportSize = i + 1;
+            sizeButton.setOnClickListener(v -> {
+                ExportOptions options = new ExportOptions(
+                        rbExportPng.isChecked(),
+                        exportSize,
+                        cbExportSquare.isChecked(),
+                        cbExportMetadata.isChecked());
+                if (share) {
+                    shareImage(images, context, crop, options);
+                } else {
+                    saveImage(images, context, crop, options);
+                }
+                exportDialog.dismiss();
+            });
+        }
+
+        exportDialog.show();
     }
 
     private static Bitmap preparePngExportBitmap(GbcImage gbcImage, boolean crop, ExportOptions options) {

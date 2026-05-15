@@ -369,7 +369,6 @@ public class MainActivity extends AppCompatActivity {
                 break;
             case PALETTES:
             case SETTINGS:
-            case GBSTORAGE:
             case SAVE_MANAGER:
             case USB_SERIAL:
             case IMPORT:
@@ -377,6 +376,10 @@ public class MainActivity extends AppCompatActivity {
                 menu.clear(); // Cleans the current menu
                 StaticValues.fab.hide();
                 menu.close();
+                break;
+            case GBSTORAGE:
+                menu.clear();
+                getMenuInflater().inflate(R.menu.gbstorage_menu, menu);
                 break;
         }
         updateNavigationView(R.id.nav_extra_gallery, StaticValues.showExtraGallery);
