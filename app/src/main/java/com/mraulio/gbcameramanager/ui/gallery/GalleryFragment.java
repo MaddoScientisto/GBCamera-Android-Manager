@@ -858,25 +858,37 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
                                 now = LocalDateTime.now();
                             }
                             Date nowDate = new Date();
-                            File gifFile = null;
+                            String gifFileName;
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                                 DateTimeFormatter dtf = DateTimeFormatter.ofPattern(dateLocale + "_HH-mm-ss");
-                                gifFile = new File(Utils.IMAGES_FOLDER, "GIF_" + dtf.format(now) + ".gif");
+                                gifFileName = "GIF_" + dtf.format(now) + ".gif";
                             } else {
                                 SimpleDateFormat sdf = new SimpleDateFormat(dateLocale + "_HH-mm-ss", Locale.getDefault());
-                                gifFile = new File(Utils.IMAGES_FOLDER, "GIF_" + sdf.format(nowDate) + ".gif");
+                                gifFileName = "GIF_" + sdf.format(nowDate) + ".gif";
 
                             }
 
-                            try (FileOutputStream out = new FileOutputStream(gifFile)) {
-
-                                out.write(bos.toByteArray());
-                                mediaScanner(gifFile, getContext());
-                                showNotification(getContext(), gifFile);
+                            File tempGifFile = null;
+                            try {
+                                tempGifFile = File.createTempFile("gbcam_export_", ".gif", requireContext().getCacheDir());
+                                try (FileOutputStream out = new FileOutputStream(tempGifFile)) {
+                                    out.write(bos.toByteArray());
+                                }
+                                Utils.SavedExportEntry savedExportEntry = Utils.saveExportToConfiguredLocation(
+                                        requireContext(),
+                                        tempGifFile,
+                                        gifFileName,
+                                        "image/gif",
+                                        false
+                                );
+                                showNotification(getContext(), savedExportEntry);
                                 Utils.toast(getContext(), getString(R.string.toast_saved) + " GIF!");
-
                             } catch (IOException e) {
                                 e.printStackTrace();
+                            } finally {
+                                if (tempGifFile != null && tempGifFile.exists()) {
+                                    tempGifFile.delete();
+                                }
                             }
 
                         }
