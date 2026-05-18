@@ -98,6 +98,27 @@
 
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/switches3Layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginVertical="10dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/switches2Layout">
+
+        <Switch
+            android:id="@+id/swMp4"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="false"
+            android:paddingHorizontal="5dp"
+            android:text="@string/animation_export_mp4" />
+
+    </LinearLayout>
+
     <Button
         android:id="@+id/btnReload"
         android:layout_width="wrap_content"
@@ -106,6 +127,6 @@
         android:text="@string/btn_realod_anim"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/switches2Layout" />
+        app:layout_constraintTop_toBottomOf="@id/switches3Layout" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

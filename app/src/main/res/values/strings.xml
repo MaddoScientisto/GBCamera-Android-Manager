@@ -192,6 +192,7 @@
     <string name="remove_filter_item">Remove filter</string>
     <string name="average_item">Average</string>
     <string name="animate_item">Animate</string>
+    <string name="animation_mp4_only_limit">GIF export is limited to 200 frames. Use MP4 for larger animations.</string>
     <string name="json_backup_item">JSON Backup</string>
     <string name="dialog_close_button">Close</string>
     <string name="select_minimum_toast">Select at least 2 images</string>
@@ -202,6 +203,8 @@
     <string name="json_backup_failed">JSON Backup failed</string>
     <string name="page_selector_dialog">Select page</string>
     <string name="sizes_exception">All images must have the same size.</string>
+    <string name="animation_export_mp4">Export MP4</string>
+    <string name="animation_export_failed">Animation export failed</string>
     <string name="save_location_hint">The Save export action writes PNGs to Downloads/GBCamera Manager/Images and TXT exports to Downloads/GBCamera Manager/Hex images by default. You can choose a different export folder above and reset it back to Downloads at any time.</string>
 
     <string name="done_dumping_ram">DONE DUMPING RAM! Check your Download/GBCamera Manager/Save dumps folder</string>

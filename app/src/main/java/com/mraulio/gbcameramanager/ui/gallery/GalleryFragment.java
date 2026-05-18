@@ -50,6 +50,10 @@ import android.graphics.Color;
 import android.graphics.Matrix;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
+import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
+import android.media.MediaFormat;
+import android.media.MediaMuxer;
 
 import android.os.Bundle;
 import android.util.DisplayMetrics;
@@ -103,6 +107,7 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
@@ -121,6 +126,10 @@ import javax.xml.transform.Result;
 import pl.droidsonroids.gif.GifDrawable;
 
 public class GalleryFragment extends Fragment implements SerialInputOutputManager.Listener {
+    private static final String MP4_MIME_TYPE = MediaFormat.MIMETYPE_VIDEO_AVC;
+    private static final long MP4_CODEC_TIMEOUT_US = 10_000L;
+    private static final int MAX_GIF_EXPORT_FRAMES = 200;
+    private static final int MAX_ANIMATION_PREVIEW_FRAMES = 60;
     static UsbManager manager = MainActivity.manager;
     SerialInputOutputManager usbIoManager;
     static UsbDeviceConnection connection;
@@ -810,12 +819,14 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
                 //Using this library https://github.com/nbadal/android-gif-encoder
 
                 if (!selectedImages.isEmpty()) {
-                    List<Integer> sortedList = new ArrayList<>(selectedImages);
-                    final List<Integer>[] listInUse = new List[]{selectedImages};
-                    Collections.sort(sortedList);
-                    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                    Activity animationActivity = getActivity();
+                    Context animationContext = getContext();
+                    if (animationActivity == null || animationContext == null) {
+                        return true;
+                    }
+
                     AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
-                    builder.setTitle("GIF!");
+                    builder.setTitle(getString(R.string.animate_item));
 
                     LayoutInflater inflater = LayoutInflater.from(getContext());
                     View dialogView = inflater.inflate(R.layout.animation_dialog, null);
@@ -827,6 +838,16 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
                     Switch swBounce = dialogView.findViewById(R.id.swBounce);
                     Switch swSort = dialogView.findViewById(R.id.swSort);
                     Switch swCrop = dialogView.findViewById(R.id.swCrop);
+                    Switch swMp4 = dialogView.findViewById(R.id.swMp4);
+
+                        updateAnimationExportSwitch(swMp4,
+                            buildAnimationFrameSequence(new ArrayList<>(selectedImages), swSort.isChecked(), swBounce.isChecked()).size(),
+                            true);
+
+                        swBounce.setOnCheckedChangeListener((buttonView, isChecked) -> updateAnimationExportSwitch(
+                            swMp4,
+                            buildAnimationFrameSequence(new ArrayList<>(selectedImages), swSort.isChecked(), swBounce.isChecked()).size(),
+                            true));
 
                     ImageView imageView = dialogView.findViewById(R.id.animation_image);
                     imageView.setAdjustViewBounds(true);
@@ -853,43 +874,59 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
                     builder.setPositiveButton(getString(R.string.btn_save), new DialogInterface.OnClickListener() {
                         @Override
                         public void onClick(DialogInterface dialog, int which) {
-                            LocalDateTime now = null;
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                now = LocalDateTime.now();
-                            }
-                            Date nowDate = new Date();
-                            String gifFileName;
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                DateTimeFormatter dtf = DateTimeFormatter.ofPattern(dateLocale + "_HH-mm-ss");
-                                gifFileName = "GIF_" + dtf.format(now) + ".gif";
-                            } else {
-                                SimpleDateFormat sdf = new SimpleDateFormat(dateLocale + "_HH-mm-ss", Locale.getDefault());
-                                gifFileName = "GIF_" + sdf.format(nowDate) + ".gif";
+                            List<Integer> frameSequence = buildAnimationFrameSequence(new ArrayList<>(selectedImages), swSort.isChecked(), swBounce.isChecked());
+                            boolean gifAllowed = frameSequence.size() <= MAX_GIF_EXPORT_FRAMES;
+                            boolean exportMp4 = swMp4.isChecked() || !gifAllowed;
+                            boolean loopAnimation = swLoop.isChecked();
+                            boolean cropAnimation = swCrop.isChecked();
+                            int frameRate = fps[0];
 
+                            if (!exportMp4 && !gifAllowed) {
+                                Utils.toast(animationContext, getString(R.string.animation_mp4_only_limit));
+                                return;
                             }
 
-                            File tempGifFile = null;
-                            try {
-                                tempGifFile = File.createTempFile("gbcam_export_", ".gif", requireContext().getCacheDir());
-                                try (FileOutputStream out = new FileOutputStream(tempGifFile)) {
-                                    out.write(bos.toByteArray());
+                            loadDialog.setLoadingDialogText("");
+                            loadDialog.showDialog();
+
+                            new Thread(() -> {
+                                File tempAnimationFile = null;
+                                try {
+                                    String fileName = buildAnimationFileName(exportMp4 ? "ANIM_" : "GIF_", exportMp4 ? ".mp4" : ".gif");
+                                    String mimeType = exportMp4 ? "video/mp4" : "image/gif";
+                                    tempAnimationFile = File.createTempFile("gbcam_export_", exportMp4 ? ".mp4" : ".gif", animationContext.getCacheDir());
+
+                                    if (exportMp4) {
+                                        writeMp4Animation(tempAnimationFile, frameSequence, cropAnimation, frameRate);
+                                    } else {
+                                        writeGifAnimation(tempAnimationFile, frameSequence, cropAnimation, frameRate, loopAnimation);
+                                    }
+
+                                    Utils.SavedExportEntry savedExportEntry = Utils.saveExportToConfiguredLocation(
+                                            animationContext,
+                                            tempAnimationFile,
+                                            fileName,
+                                            mimeType,
+                                            false
+                                    );
+
+                                    animationActivity.runOnUiThread(() -> {
+                                        loadDialog.dismissDialog();
+                                        showNotification(animationContext, savedExportEntry);
+                                        Utils.toast(animationContext, getString(R.string.toast_saved) + (exportMp4 ? " MP4!" : " GIF!"));
+                                    });
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                    animationActivity.runOnUiThread(() -> {
+                                        loadDialog.dismissDialog();
+                                        Utils.toast(animationContext, getString(R.string.animation_export_failed));
+                                    });
+                                } finally {
+                                    if (tempAnimationFile != null && tempAnimationFile.exists()) {
+                                        tempAnimationFile.delete();
+                                    }
                                 }
-                                Utils.SavedExportEntry savedExportEntry = Utils.saveExportToConfiguredLocation(
-                                        requireContext(),
-                                        tempGifFile,
-                                        gifFileName,
-                                        "image/gif",
-                                        false
-                                );
-                                showNotification(getContext(), savedExportEntry);
-                                Utils.toast(getContext(), getString(R.string.toast_saved) + " GIF!");
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                            } finally {
-                                if (tempGifFile != null && tempGifFile.exists()) {
-                                    tempGifFile.delete();
-                                }
-                            }
+                            }).start();
 
                         }
                     });
@@ -899,111 +936,40 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
                         }
                     });
 
-                    List<Integer> indexesToLoad = new ArrayList<>();
-                    for (int i : selectedImages) {
-                        String hashCode = filteredGbcImages.get(i).getHashCode();
-                        if (imageBitmapCache.get(hashCode) == null) {
-                            indexesToLoad.add(i);
-                        }
-                    }
-                    reload_anim.setOnClickListener(v -> {
+                    AlertDialog animationDialog = builder.create();
+                    Runnable renderPreview = () -> {
+                        List<Integer> frameSequence = buildAnimationFrameSequence(new ArrayList<>(selectedImages), swSort.isChecked(), swBounce.isChecked());
+                        updateAnimationExportSwitch(swMp4, frameSequence.size(), false);
+                        List<Integer> previewSequence = buildPreviewFrameSequence(frameSequence);
+
+                        loadDialog.setLoadingDialogText("");
                         loadDialog.showDialog();
-                        LoadBitmapCacheAsyncTask asyncTask = new LoadBitmapCacheAsyncTask(indexesToLoad, loadDialog, new AsyncTaskCompleteListener<Result>() {
-                            @Override
-                            public void onTaskComplete(Result result) {
-                                bos.reset();
-                                AnimatedGifEncoder encoder = new AnimatedGifEncoder();
-                                encoder.setRepeat(swLoop.isChecked() ? 0 : -1);
-                                encoder.setFrameRate(fps[0]);
-                                encoder.start(bos);
-                                List<Bitmap> bitmapList = new ArrayList<>();
-
-                                listInUse[0] = swSort.isChecked() ? new ArrayList<>(sortedList) : new ArrayList<>(selectedImages);
-
-                                //For the bounce effect
-                                if (swBounce.isChecked()) {
-                                    List<Integer> reverseFrames = new ArrayList<>();
-                                    for (int i = listInUse[0].size() - 2; i > 0; i--) {
-                                        reverseFrames.add(listInUse[0].get(i));
+                        new Thread(() -> {
+                            try {
+                                GifDrawable gifDrawable = new GifDrawable(buildGifBytes(previewSequence, fps[0], swLoop.isChecked(), swCrop.isChecked()));
+                                gifDrawable.start();
+                                animationActivity.runOnUiThread(() -> {
+                                    imageView.setImageDrawable(gifDrawable);
+                                    loadDialog.dismissDialog();
+                                    if (!animationDialog.isShowing()) {
+                                        animationDialog.show();
                                     }
-                                    listInUse[0].addAll(reverseFrames);
-                                }
-
-                                for (int i : listInUse[0]) {
-                                    Bitmap bitmap = imageBitmapCache.get(filteredGbcImages.get(i).getHashCode()).copy(imageBitmapCache.get(filteredGbcImages.get(i).getHashCode()).getConfig(), true);
-                                    if (swCrop.isChecked()) {
-                                        if (bitmap.getHeight() == 144 && bitmap.getWidth() == 160) {
-                                            bitmap = Bitmap.createBitmap(bitmap, 16, 16, 128, 112);
-                                        }
-                                        //For the wild frames
-                                        else if (bitmap.getHeight() == 224 && crop) {
-                                            bitmap = Bitmap.createBitmap(bitmap, 16, 40, 128, 112);
-                                        }
+                                });
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                                animationActivity.runOnUiThread(() -> {
+                                    loadDialog.dismissDialog();
+                                    if (!animationDialog.isShowing()) {
+                                        animationDialog.show();
                                     }
-                                    bitmap = rotateBitmap(bitmap, (filteredGbcImages.get(i)));
-                                    bitmapList.add(Bitmap.createScaledBitmap(bitmap, bitmap.getWidth() * exportSize, bitmap.getHeight() * exportSize, false));
-                                }
-
-                                for (Bitmap bitmap : bitmapList) {
-                                    encoder.addFrame(bitmap);
-                                }
-                                encoder.finish();
-                                byte[] gifBytes = bos.toByteArray();
-                                GifDrawable gifDrawable = null;
-                                try {
-                                    gifDrawable = new GifDrawable(gifBytes);
-                                    gifDrawable.start(); // Starts the animation
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                }
-                                imageView.setImageDrawable(gifDrawable);
-                                loadDialog.dismissDialog();
+                                    Utils.toast(animationContext, getString(R.string.animation_export_failed));
+                                });
                             }
-                        });
-                        asyncTask.execute();
-                    });
+                        }).start();
+                    };
 
-                    loadDialog.setLoadingDialogText("");
-                    loadDialog.showDialog();
-                    LoadBitmapCacheAsyncTask asyncTask = new LoadBitmapCacheAsyncTask(indexesToLoad, loadDialog, result -> {
-                        AnimatedGifEncoder encoder = new AnimatedGifEncoder();
-                        encoder.setRepeat(swLoop.isChecked() ? 0 : -1);
-                        encoder.setFrameRate(fps[0]);
-                        encoder.start(bos);
-                        List<Bitmap> bitmapList = new ArrayList<>();
-
-                        for (int i : selectedImages) {
-                            Bitmap bitmap = imageBitmapCache.get(filteredGbcImages.get(i).getHashCode()).copy(imageBitmapCache.get(filteredGbcImages.get(i).getHashCode()).getConfig(), true);
-                            bitmap = rotateBitmap(bitmap, (filteredGbcImages.get(i)));
-                            bitmapList.add(Bitmap.createScaledBitmap(bitmap, bitmap.getWidth() * exportSize, bitmap.getHeight() * exportSize, false));
-                        }
-                        //For the bounce effect
-                        if (swBounce.isChecked()) {
-                            List<Bitmap> reverseFrames = new ArrayList<>(bitmapList);
-                            for (int i = bitmapList.size() - 2; i > 0; i--) {
-                                reverseFrames.add(bitmapList.get(i).copy(bitmapList.get(i).getConfig(), false));
-                            }
-                            bitmapList.addAll(reverseFrames);
-                        }
-                        for (Bitmap bitmap : bitmapList) {
-                            encoder.addFrame(bitmap);
-                        }
-                        encoder.finish();
-                        byte[] gifBytes = bos.toByteArray();
-                        GifDrawable gifDrawable = null;
-                        try {
-                            gifDrawable = new GifDrawable(gifBytes);
-                            gifDrawable.start(); // Starts the animation
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                        imageView.setImageDrawable(gifDrawable);
-
-                        AlertDialog dialog = builder.create();
-                        loadDialog.dismissDialog();
-                        dialog.show();
-                    });
-                    asyncTask.execute();
+                    reload_anim.setOnClickListener(v -> renderPreview.run());
+                    renderPreview.run();
 
                 } else
                     Utils.toast(getContext(), getString(R.string.no_selected));
@@ -1584,6 +1550,358 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
     @Override
     public void onRunError(Exception e) {
 
+    }
+
+    private List<Integer> buildAnimationFrameSequence(List<Integer> sourceSelection, boolean sortFrames, boolean bounceFrames) {
+        List<Integer> frameSequence = new ArrayList<>(sourceSelection);
+        if (sortFrames) {
+            Collections.sort(frameSequence);
+        }
+        if (bounceFrames && frameSequence.size() > 2) {
+            for (int i = frameSequence.size() - 2; i > 0; i--) {
+                frameSequence.add(frameSequence.get(i));
+            }
+        }
+        return frameSequence;
+    }
+
+    private List<Integer> buildPreviewFrameSequence(List<Integer> frameSequence) {
+        if (frameSequence.size() <= MAX_ANIMATION_PREVIEW_FRAMES) {
+            return new ArrayList<>(frameSequence);
+        }
+
+        List<Integer> previewSequence = new ArrayList<>();
+        double step = (double) (frameSequence.size() - 1) / (MAX_ANIMATION_PREVIEW_FRAMES - 1);
+        int lastIndex = -1;
+        for (int i = 0; i < MAX_ANIMATION_PREVIEW_FRAMES; i++) {
+            int sampledIndex = (int) Math.round(i * step);
+            sampledIndex = Math.min(sampledIndex, frameSequence.size() - 1);
+            if (sampledIndex != lastIndex) {
+                previewSequence.add(frameSequence.get(sampledIndex));
+                lastIndex = sampledIndex;
+            }
+        }
+        return previewSequence;
+    }
+
+    private void updateAnimationExportSwitch(Switch swMp4, int frameCount, boolean notifyUser) {
+        boolean mp4Only = frameCount > MAX_GIF_EXPORT_FRAMES;
+        if (mp4Only) {
+            boolean shouldNotify = notifyUser && (!swMp4.isChecked() || swMp4.isEnabled());
+            swMp4.setChecked(true);
+            swMp4.setEnabled(false);
+            if (shouldNotify && getContext() != null) {
+                Utils.toast(getContext(), getString(R.string.animation_mp4_only_limit));
+            }
+        } else {
+            swMp4.setEnabled(true);
+        }
+    }
+
+    private byte[] buildGifBytes(List<Integer> frameSequence, int fps, boolean loopAnimation, boolean cropFrames) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        AnimatedGifEncoder encoder = new AnimatedGifEncoder();
+        encoder.setRepeat(loopAnimation ? 0 : -1);
+        encoder.setFrameRate(Math.max(1, fps));
+        if (!encoder.start(bos)) {
+            throw new IOException("Unable to start GIF export");
+        }
+        for (int frameIndex : frameSequence) {
+            Bitmap bitmap = renderAnimationBitmap(frameIndex, cropFrames);
+            encoder.addFrame(bitmap);
+        }
+        if (!encoder.finish()) {
+            throw new IOException("Unable to finish GIF export");
+        }
+        return bos.toByteArray();
+    }
+
+    private void writeGifAnimation(File outputFile, List<Integer> frameSequence, boolean cropFrames, int fps, boolean loopAnimation) throws IOException {
+        try (FileOutputStream out = new FileOutputStream(outputFile)) {
+            AnimatedGifEncoder encoder = new AnimatedGifEncoder();
+            encoder.setRepeat(loopAnimation ? 0 : -1);
+            encoder.setFrameRate(Math.max(1, fps));
+            if (!encoder.start(out)) {
+                throw new IOException("Unable to start GIF export");
+            }
+            for (int frameIndex : frameSequence) {
+                Bitmap bitmap = renderAnimationBitmap(frameIndex, cropFrames);
+                encoder.addFrame(bitmap);
+            }
+            if (!encoder.finish()) {
+                throw new IOException("Unable to finish GIF export");
+            }
+        }
+    }
+
+    private String buildAnimationFileName(String prefix, String extension) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            LocalDateTime now = LocalDateTime.now();
+            DateTimeFormatter dtf = DateTimeFormatter.ofPattern(dateLocale + "_HH-mm-ss");
+            return prefix + dtf.format(now) + extension;
+        }
+
+        Date nowDate = new Date();
+        SimpleDateFormat sdf = new SimpleDateFormat(dateLocale + "_HH-mm-ss", Locale.getDefault());
+        return prefix + sdf.format(nowDate) + extension;
+    }
+
+    private void writeMp4Animation(File outputFile, List<Integer> frameSequence, boolean cropFrames, int fps) throws IOException {
+        if (frameSequence.isEmpty()) {
+            throw new IOException("No animation frames to encode");
+        }
+
+        Bitmap firstFrame = renderAnimationBitmap(frameSequence.get(0), cropFrames);
+        int width = firstFrame.getWidth();
+        int height = firstFrame.getHeight();
+        if ((width & 1) != 0 || (height & 1) != 0) {
+            throw new IOException("MP4 export requires even frame dimensions");
+        }
+
+        MediaCodec encoder = MediaCodec.createEncoderByType(MP4_MIME_TYPE);
+        MediaMuxer muxer = new MediaMuxer(outputFile.getAbsolutePath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+        MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+        int[] trackIndexHolder = new int[]{-1};
+        boolean[] muxerStartedHolder = new boolean[]{false};
+
+        try {
+            int colorFormat = selectMp4ColorFormat(encoder);
+            MediaFormat format = MediaFormat.createVideoFormat(MP4_MIME_TYPE, width, height);
+            format.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
+            format.setInteger(MediaFormat.KEY_BIT_RATE, calculateMp4Bitrate(width, height, fps));
+            format.setInteger(MediaFormat.KEY_FRAME_RATE, Math.max(1, fps));
+            format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
+
+            encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+            encoder.start();
+
+            long frameDurationUs = 1_000_000L / Math.max(1, fps);
+            long presentationTimeUs = 0L;
+
+            for (int framePosition = 0; framePosition < frameSequence.size(); framePosition++) {
+                Bitmap bitmap = framePosition == 0
+                        ? firstFrame
+                        : renderAnimationBitmap(frameSequence.get(framePosition), cropFrames);
+                byte[] frameBytes = bitmapToYuv420(bitmap, colorFormat);
+                boolean frameQueued = false;
+                while (!frameQueued) {
+                    int inputBufferIndex = encoder.dequeueInputBuffer(MP4_CODEC_TIMEOUT_US);
+                    if (inputBufferIndex >= 0) {
+                        ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        if (inputBuffer == null) {
+                            throw new IOException("Unable to access MP4 input buffer");
+                        }
+                        inputBuffer.clear();
+                        inputBuffer.put(frameBytes);
+                        encoder.queueInputBuffer(inputBufferIndex, 0, frameBytes.length, presentationTimeUs, 0);
+                        presentationTimeUs += frameDurationUs;
+                        frameQueued = true;
+                    }
+                    drainMp4Encoder(encoder, muxer, bufferInfo, trackIndexHolder, muxerStartedHolder);
+                }
+            }
+
+            boolean endOfStreamQueued = false;
+            boolean endOfStreamReached = false;
+            while (!endOfStreamQueued) {
+                int inputBufferIndex = encoder.dequeueInputBuffer(MP4_CODEC_TIMEOUT_US);
+                if (inputBufferIndex >= 0) {
+                    encoder.queueInputBuffer(inputBufferIndex, 0, 0, presentationTimeUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                    endOfStreamQueued = true;
+                }
+                endOfStreamReached = drainMp4Encoder(encoder, muxer, bufferInfo, trackIndexHolder, muxerStartedHolder);
+            }
+
+            while (!endOfStreamReached) {
+                endOfStreamReached = drainMp4Encoder(encoder, muxer, bufferInfo, trackIndexHolder, muxerStartedHolder);
+            }
+
+            if (!muxerStartedHolder[0]) {
+                throw new IOException("MP4 encoder did not produce a valid output track");
+            }
+        } finally {
+            try {
+                encoder.stop();
+            } catch (Exception ignored) {
+            }
+            encoder.release();
+
+            if (muxerStartedHolder[0]) {
+                try {
+                    muxer.stop();
+                } catch (Exception ignored) {
+                }
+            }
+            muxer.release();
+        }
+    }
+
+    private int selectMp4ColorFormat(MediaCodec encoder) throws IOException {
+        MediaCodecInfo.CodecCapabilities capabilities = encoder.getCodecInfo().getCapabilitiesForType(MP4_MIME_TYPE);
+        int[] preferredFormats = new int[]{
+                MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar,
+                MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar,
+                MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedSemiPlanar,
+                MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedPlanar,
+                MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible
+        };
+        for (int preferredFormat : preferredFormats) {
+            for (int colorFormat : capabilities.colorFormats) {
+                if (colorFormat == preferredFormat && isSupportedMp4ColorFormat(colorFormat)) {
+                    return colorFormat;
+                }
+            }
+        }
+        throw new IOException("No supported YUV420 color format for MP4 export");
+    }
+
+    private boolean isSupportedMp4ColorFormat(int colorFormat) {
+        return colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible
+                || colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar
+                || colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedPlanar
+                || colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar
+                || colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedSemiPlanar;
+    }
+
+    private int calculateMp4Bitrate(int width, int height, int fps) {
+        return Math.max(width * height * Math.max(1, fps) * 2, 500_000);
+    }
+
+    private boolean drainMp4Encoder(MediaCodec encoder, MediaMuxer muxer, MediaCodec.BufferInfo bufferInfo,
+                                    int[] trackIndexHolder, boolean[] muxerStartedHolder) throws IOException {
+        while (true) {
+            int outputBufferIndex = encoder.dequeueOutputBuffer(bufferInfo, MP4_CODEC_TIMEOUT_US);
+            if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                return false;
+            } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                if (muxerStartedHolder[0]) {
+                    throw new IOException("MP4 muxer format changed twice");
+                }
+                trackIndexHolder[0] = muxer.addTrack(encoder.getOutputFormat());
+                muxer.start();
+                muxerStartedHolder[0] = true;
+            } else if (outputBufferIndex >= 0) {
+                ByteBuffer outputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                if (outputBuffer == null) {
+                    throw new IOException("Unable to access MP4 output buffer");
+                }
+
+                if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                    bufferInfo.size = 0;
+                }
+
+                if (bufferInfo.size > 0) {
+                    if (!muxerStartedHolder[0]) {
+                        throw new IOException("MP4 muxer has not started");
+                    }
+
+                    outputBuffer.position(bufferInfo.offset);
+                    outputBuffer.limit(bufferInfo.offset + bufferInfo.size);
+                    muxer.writeSampleData(trackIndexHolder[0], outputBuffer, bufferInfo);
+                }
+
+                encoder.releaseOutputBuffer(outputBufferIndex, false);
+
+                if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    private Bitmap renderAnimationBitmap(int index, boolean cropFrames) throws IOException {
+        Bitmap sourceBitmap = loadAnimationSourceBitmap(index);
+        Bitmap.Config config = sourceBitmap.getConfig() != null ? sourceBitmap.getConfig() : Bitmap.Config.ARGB_8888;
+        Bitmap bitmap = sourceBitmap.copy(config, true);
+        if (cropFrames) {
+            if (bitmap.getHeight() == 144 && bitmap.getWidth() == 160) {
+                bitmap = Bitmap.createBitmap(bitmap, 16, 16, 128, 112);
+            } else if (bitmap.getHeight() == 224 && crop) {
+                bitmap = Bitmap.createBitmap(bitmap, 16, 40, 128, 112);
+            }
+        }
+
+        bitmap = rotateBitmap(bitmap, filteredGbcImages.get(index));
+        return Bitmap.createScaledBitmap(bitmap, bitmap.getWidth() * exportSize, bitmap.getHeight() * exportSize, false);
+    }
+
+    private Bitmap loadAnimationSourceBitmap(int index) throws IOException {
+        GbcImage gbcImage = filteredGbcImages.get(index);
+        String imageHash = gbcImage.getHashCode();
+
+        Bitmap memoryBitmap = imageBitmapCache.get(imageHash);
+        if (memoryBitmap != null) {
+            return memoryBitmap;
+        }
+
+        Bitmap diskBitmap = diskCache.get(imageHash);
+        if (diskBitmap != null) {
+            return diskBitmap;
+        }
+
+        byte[] imageBytes = StaticValues.db.imageDataDao().getDataByImageId(imageHash);
+        if (imageBytes == null) {
+            throw new IOException("Unable to load image data for animation");
+        }
+
+        gbcImage.setImageBytes(imageBytes);
+        if (gbcImage.getFramePaletteId() == null) {
+            gbcImage.setFramePaletteId("bw");
+        }
+
+        Bitmap bitmap = paletteChanger(gbcImage.getPaletteId(), imageBytes, gbcImage.isInvertPalette());
+        if (bitmap.getHeight() == 144 && gbcImage.getFrameId() != null) {
+            bitmap = frameChange(gbcImage, gbcImage.getFrameId(), gbcImage.isInvertPalette(), gbcImage.isInvertFramePalette(), gbcImage.isLockFrame(), false);
+        }
+        diskCache.put(imageHash, bitmap);
+        return bitmap;
+    }
+
+    private byte[] bitmapToYuv420(Bitmap bitmap, int colorFormat) {
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        int[] argb = new int[width * height];
+        bitmap.getPixels(argb, 0, width, 0, 0, width, height);
+
+        byte[] yuv = new byte[width * height * 3 / 2];
+        boolean semiPlanar = colorFormat != MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar
+                && colorFormat != MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedPlanar;
+
+        int yIndex = 0;
+        int uvIndex = width * height;
+        int uIndex = width * height;
+        int vIndex = width * height + (width * height / 4);
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int color = argb[y * width + x];
+                int r = (color >> 16) & 0xFF;
+                int g = (color >> 8) & 0xFF;
+                int b = color & 0xFF;
+
+                int yValue = clampToByte(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16);
+                int uValue = clampToByte(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128);
+                int vValue = clampToByte(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128);
+
+                yuv[yIndex++] = (byte) yValue;
+
+                if ((y & 1) == 0 && (x & 1) == 0) {
+                    if (semiPlanar) {
+                        yuv[uvIndex++] = (byte) uValue;
+                        yuv[uvIndex++] = (byte) vValue;
+                    } else {
+                        yuv[uIndex++] = (byte) uValue;
+                        yuv[vIndex++] = (byte) vValue;
+                    }
+                }
+            }
+        }
+
+        return yuv;
+    }
+
+    private int clampToByte(int value) {
+        return Math.max(0, Math.min(255, value));
     }
 
     private Bitmap getPrintBitmap(int colsRowsValue, int lastPicked, boolean swCropCollageChecked, boolean swHorizontalOrientationChecked, boolean swHalfFrameChecked, int extraPaddingMultiplier) {
