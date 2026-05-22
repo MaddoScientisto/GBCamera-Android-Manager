@@ -31,6 +31,7 @@ public class GBxCartConstants {
         put("SET_VARIABLE", 0xA6);
         put("SET_FLASH_CMD", 0xA7);
         put("SET_ADDR_AS_INPUTS", 0xA8);
+        put("CLK_TOGGLE", 0xA9);
         put("CLK_HIGH", 0xA9);
         put("CLK_LOW", 0xAA);
         put("DMG_CART_READ", 0xB1);

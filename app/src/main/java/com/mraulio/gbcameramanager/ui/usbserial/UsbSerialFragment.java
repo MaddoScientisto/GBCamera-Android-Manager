@@ -84,6 +84,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -117,22 +118,37 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
 
     TextView tvMode;
     public static Button btnSave, btnReadRomName, btnReadRam, btnFullRom, btnPrintBanner, btnAddImages, btnDelSav, btnDecode, btnDelete, btnReadPicNRec;
+    Button btnGbxCartLiveCamera;
+    Button btnSaveGbxCartLiveCameraFrame;
     Button btnImportPicoGbSerialBuffer;
     Button btnClearPicoGbSerialBuffer;
     Button btnSelectAllPicoGbSerialBuffer;
     EditText etPicoGbSerialImportTag;
     ImageView ivPicoGbSerialLastPreview;
+    ImageView ivGbxCartLiveCameraPreview;
     Button btnPicNRecStartFirst, btnPicNRecStartCurrent, btnPicNRecEndCurrent, btnPicNRecEndLast, btnPicNRecPreviewMinus, btnPicNRecPreviewPlus, btnPicNRecPreviewLast, btnPicNRecPreviewMinusTen, btnPicNRecPreviewPlusTen, btnPicNRecPreviewFirst;
     EditText etPicNRecStart, etPicNRecEnd;
     ImageView ivPicNRecPreview;
     SeekBar sbPicNRecPreview;
     TextView tvPicNRecDeviceInfo, tvPicNRecPreviewStatus;
+    TextView tvGbxCartLiveCameraStatus;
+    TextView tvGbxCartLiveCameraExposure, tvGbxCartLiveCameraGain, tvGbxCartLiveCameraVoltage, tvGbxCartLiveCameraEdge, tvGbxCartLiveCameraContrast, tvGbxCartLiveCameraDither;
     RadioButton rbGbx, rbApe, rbPicNRec, rbPicoGbSerial;
     public static RadioButton rbPrint;
     RadioGroup rbGroup;
     LinearLayout layoutPicoGbSerialControls;
+    LinearLayout layoutGbxCartLiveCameraControls;
     CheckBox cbPicoGbSerialAutoImport;
     CheckBox cbPicoGbSerialAutoDeleteDuplicates;
+    CheckBox cbGbxCartLiveCameraAuto;
+    CheckBox cbGbxCartLiveCameraExposureSnap;
+    CheckBox cbGbxCartLiveCameraDitherHigh;
+    SeekBar sbGbxCartLiveCameraExposure;
+    SeekBar sbGbxCartLiveCameraGain;
+    SeekBar sbGbxCartLiveCameraVoltage;
+    SeekBar sbGbxCartLiveCameraEdge;
+    SeekBar sbGbxCartLiveCameraContrast;
+    SeekBar sbGbxCartLiveCameraDither;
     //    public static Switch swIsCartJpUsb;
     Spinner spSaveType;
 
@@ -157,12 +173,17 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     private PendingUsbAction pendingUsbAction = PendingUsbAction.NONE;
     private boolean usbReceiverRegistered = false;
     private PicoGbSerialCommands.ReceivePicoGbSerialAsyncTask picoGbSerialReceiveTask;
+    private GBxCartCommands.LiveCameraAsyncTask gbxCartLiveCameraTask;
     private boolean picoGbSerialActive = false;
     private int picoGbSerialCaptureCount = 0;
     private PicoGbSerialCommands.StreamParser picoGbSerialStreamParser;
     private final List<Integer> picoGbSerialSelectedImages = new ArrayList<>();
     private CustomGridViewAdapterImage picoGbSerialBufferAdapter;
     private final Handler picoGbSerialClearHandler = new Handler();
+    private volatile GBxCartCommands.LiveCameraSettings gbxCartLiveCameraSettings = GBxCartCommands.LiveCameraSettings.defaultSettings();
+    private byte[] lastGbxCartLiveCameraFrame;
+    private Bitmap lastGbxCartLiveCameraBitmap;
+    private boolean updatingGbxCartLiveCameraControls = false;
 
     private enum PendingUsbAction {
         NONE,
@@ -170,6 +191,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         READ_ROM_NAME,
         READ_RAM,
         FULL_ROM,
+        GBX_LIVE_CAMERA,
         PICNREC_MODE,
         READ_PICNREC,
         CLEAR_PICNREC,
@@ -211,6 +233,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         layoutCb = view.findViewById(R.id.layout_cb);
         layoutPicNRecControls = view.findViewById(R.id.layoutPicNRecControls);
         layoutPicoGbSerialControls = view.findViewById(R.id.layoutPicoGbSerialControls);
+        layoutGbxCartLiveCameraControls = view.findViewById(R.id.layoutGbxCartLiveCameraControls);
         cbPicoGbSerialAutoImport = view.findViewById(R.id.cbPicoGbSerialAutoImport);
         cbPicoGbSerialAutoDeleteDuplicates = view.findViewById(R.id.cbPicoGbSerialAutoDeleteDuplicates);
         etPicoGbSerialImportTag = view.findViewById(R.id.etPicoGbSerialImportTag);
@@ -218,8 +241,25 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         btnClearPicoGbSerialBuffer = view.findViewById(R.id.btnClearPicoGbSerialBuffer);
         btnSelectAllPicoGbSerialBuffer = view.findViewById(R.id.btnSelectAllPicoGbSerialBuffer);
         ivPicoGbSerialLastPreview = view.findViewById(R.id.ivPicoGbSerialLastPreview);
+        ivGbxCartLiveCameraPreview = view.findViewById(R.id.ivGbxCartLiveCameraPreview);
         tvPicNRecDeviceInfo = view.findViewById(R.id.tvPicNRecDeviceInfo);
         tvPicNRecPreviewStatus = view.findViewById(R.id.tvPicNRecPreviewStatus);
+        tvGbxCartLiveCameraStatus = view.findViewById(R.id.tvGbxCartLiveCameraStatus);
+        tvGbxCartLiveCameraExposure = view.findViewById(R.id.tvGbxCartLiveCameraExposure);
+        tvGbxCartLiveCameraGain = view.findViewById(R.id.tvGbxCartLiveCameraGain);
+        tvGbxCartLiveCameraVoltage = view.findViewById(R.id.tvGbxCartLiveCameraVoltage);
+        tvGbxCartLiveCameraEdge = view.findViewById(R.id.tvGbxCartLiveCameraEdge);
+        tvGbxCartLiveCameraContrast = view.findViewById(R.id.tvGbxCartLiveCameraContrast);
+        tvGbxCartLiveCameraDither = view.findViewById(R.id.tvGbxCartLiveCameraDither);
+        cbGbxCartLiveCameraAuto = view.findViewById(R.id.cbGbxCartLiveCameraAuto);
+        cbGbxCartLiveCameraExposureSnap = view.findViewById(R.id.cbGbxCartLiveCameraExposureSnap);
+        cbGbxCartLiveCameraDitherHigh = view.findViewById(R.id.cbGbxCartLiveCameraDitherHigh);
+        sbGbxCartLiveCameraExposure = view.findViewById(R.id.sbGbxCartLiveCameraExposure);
+        sbGbxCartLiveCameraGain = view.findViewById(R.id.sbGbxCartLiveCameraGain);
+        sbGbxCartLiveCameraVoltage = view.findViewById(R.id.sbGbxCartLiveCameraVoltage);
+        sbGbxCartLiveCameraEdge = view.findViewById(R.id.sbGbxCartLiveCameraEdge);
+        sbGbxCartLiveCameraContrast = view.findViewById(R.id.sbGbxCartLiveCameraContrast);
+        sbGbxCartLiveCameraDither = view.findViewById(R.id.sbGbxCartLiveCameraDither);
         etPicNRecStart = view.findViewById(R.id.etPicNRecStart);
         etPicNRecEnd = view.findViewById(R.id.etPicNRecEnd);
         sbPicNRecPreview = view.findViewById(R.id.sbPicNRecPreview);
@@ -259,6 +299,8 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             }
         });
         btnFullRom = view.findViewById(R.id.btnFullRom);
+        btnGbxCartLiveCamera = view.findViewById(R.id.btnGbxCartLiveCamera);
+        btnSaveGbxCartLiveCameraFrame = view.findViewById(R.id.btnSaveGbxCartLiveCameraFrame);
         btnReadRomName = view.findViewById(R.id.btnReadRom);
         btnReadRam = view.findViewById(R.id.btnReadRam);
         btnReadPicNRec = view.findViewById(R.id.btnReadPicNRec);
@@ -398,6 +440,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
 
         btnAddImages.setOnClickListener(v -> {
             try {
+                stopGbxCartLiveCamera(false);
                 numImagesAdded = 0;
                 List<GbcImage> newGbcImages = new ArrayList<>();
                 List<Bitmap> listNewBitmaps = new ArrayList<>();
@@ -461,6 +504,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             btnAddImages.setVisibility(View.VISIBLE);
         });
         btnFullRom.setOnClickListener(v -> {
+            stopGbxCartLiveCamera(false);
             isRomExtracted = true;
             btnDelSav.setText(getString(R.string.delete_folder));
 
@@ -474,7 +518,18 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             fullRomDump();
         });
 
+        btnGbxCartLiveCamera.setOnClickListener(v -> {
+            if (gbxCartLiveCameraTask != null) {
+                stopGbxCartLiveCamera(true);
+            } else {
+                startGbxCartLiveCamera();
+            }
+        });
+        btnSaveGbxCartLiveCameraFrame.setOnClickListener(v -> saveLastGbxCartLiveCameraFrame());
+        setupGbxCartLiveCameraControls();
+
         btnReadRomName.setOnClickListener(v -> {
+            stopGbxCartLiveCamera(false);
             if (!ensureGbxConnection(PendingUsbAction.READ_ROM_NAME)) {
                 return;
             }
@@ -482,6 +537,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         });
 
         btnReadRam.setOnClickListener(v -> {
+            stopGbxCartLiveCamera(false);
             btnDelSav.setText(getString(R.string.btn_delete_sav));
 
             isRomExtracted = false;
@@ -592,6 +648,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             usbReceiverRegistered = false;
         }
         stopPicoGbSerialReceiving();
+        stopGbxCartLiveCamera(false);
     }
 
     private void resumePendingUsbAction() {
@@ -615,6 +672,11 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             case FULL_ROM:
                 if (ensureGbxConnection(PendingUsbAction.FULL_ROM)) {
                     fullRomDump();
+                }
+                break;
+            case GBX_LIVE_CAMERA:
+                if (ensureGbxConnection(PendingUsbAction.GBX_LIVE_CAMERA)) {
+                    startGbxCartLiveCamera();
                 }
                 break;
             case PICNREC_MODE:
@@ -733,8 +795,10 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     public void arduinoPrinterMode() {
         try {
             gbxMode = false;
+            stopGbxCartLiveCamera(false);
             hidePicNRecControls();
             hidePicoGbSerialControls();
+            hideGbxCartLiveCameraControls();
             tvMode.setVisibility(View.VISIBLE);
             tvMode.setText(getString(R.string.arduino_mode));
             rbGroup.setVisibility(View.GONE);
@@ -760,8 +824,10 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             StaticValues.printingEnabled = true;
             gbxMode = false;
             ape = false;
+            stopGbxCartLiveCamera(false);
             hidePicNRecControls();
             hidePicoGbSerialControls();
+            hideGbxCartLiveCameraControls();
             tvMode.setVisibility(View.VISIBLE);
             tvMode.setText(getString(R.string.print_mode));
             rbGroup.setVisibility(View.GONE);
@@ -783,12 +849,14 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         ape = false;
         hidePicNRecControls();
         hidePicoGbSerialControls();
+        hideGbxCartLiveCameraControls();
         tvMode.setText(getString(R.string.gbxcart_mode));
         tvMode.setVisibility(View.VISIBLE);
         rbGroup.setVisibility(View.GONE);
         btnReadRam.setVisibility(View.VISIBLE);
         spSaveType.setVisibility(View.VISIBLE);
         btnReadRomName.setVisibility(View.VISIBLE);
+        btnGbxCartLiveCamera.setVisibility(View.VISIBLE);
         if (!ensureGbxConnection(PendingUsbAction.GBX_MODE)) {
             return;
         }
@@ -799,7 +867,9 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         gbxMode = false;
         ape = false;
         stopPicoGbSerialReceiving();
+        stopGbxCartLiveCamera(false);
         hidePicoGbSerialControls();
+        hideGbxCartLiveCameraControls();
         tvMode.setText(getString(R.string.picnrec_mode));
         tvMode.setVisibility(View.VISIBLE);
         rbGroup.setVisibility(View.GONE);
@@ -808,6 +878,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         btnReadRam.setVisibility(View.GONE);
         btnReadRomName.setVisibility(View.GONE);
         btnFullRom.setVisibility(View.GONE);
+        btnGbxCartLiveCamera.setVisibility(View.GONE);
         spSaveType.setVisibility(View.GONE);
         btnAddImages.setVisibility(View.GONE);
         btnDelSav.setText(getString(R.string.picnrec_clear_button));
@@ -822,7 +893,9 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     private void picoGbSerialMode() {
         gbxMode = false;
         ape = false;
+        stopGbxCartLiveCamera(false);
         hidePicNRecControls();
+        hideGbxCartLiveCameraControls();
         tvMode.setText(getString(R.string.pico_gb_serial_mode));
         tvMode.setVisibility(View.VISIBLE);
         rbGroup.setVisibility(View.GONE);
@@ -830,6 +903,7 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         btnReadRam.setVisibility(View.GONE);
         btnReadRomName.setVisibility(View.GONE);
         btnFullRom.setVisibility(View.GONE);
+        btnGbxCartLiveCamera.setVisibility(View.GONE);
         btnReadPicNRec.setVisibility(View.GONE);
         spSaveType.setVisibility(View.GONE);
         btnAddImages.setVisibility(View.GONE);
@@ -864,6 +938,241 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
         if (layoutPicoGbSerialControls != null) {
             layoutPicoGbSerialControls.setVisibility(View.GONE);
         }
+    }
+
+    private void hideGbxCartLiveCameraControls() {
+        if (layoutGbxCartLiveCameraControls != null) {
+            layoutGbxCartLiveCameraControls.setVisibility(View.GONE);
+        }
+    }
+
+    private void startGbxCartLiveCamera() {
+        stopGbxCartLiveCamera(false);
+        if (!ensureGbxConnection(PendingUsbAction.GBX_LIVE_CAMERA)) {
+            return;
+        }
+        btnAddImages.setVisibility(View.GONE);
+        btnDelSav.setVisibility(View.GONE);
+        layoutCb.setVisibility(View.GONE);
+        layoutGbxCartLiveCameraControls.setVisibility(View.VISIBLE);
+        btnGbxCartLiveCamera.setText("Stop Live Camera");
+        lastGbxCartLiveCameraFrame = null;
+        lastGbxCartLiveCameraBitmap = null;
+        tvGbxCartLiveCameraStatus.setText("Starting GBxCart live camera...");
+        gbxCartLiveCameraTask = new GBxCartCommands.LiveCameraAsyncTask(port, getContext(), new GBxCartCommands.LiveCameraSettingsController() {
+            @Override
+            public GBxCartCommands.LiveCameraSettings getSettings() {
+                return gbxCartLiveCameraSettings;
+            }
+
+            @Override
+            public boolean isAutomaticAdjustmentEnabled() {
+                return cbGbxCartLiveCameraAuto != null && cbGbxCartLiveCameraAuto.isChecked();
+            }
+
+            @Override
+            public void onAutomaticSettings(GBxCartCommands.LiveCameraSettings settings) {
+                gbxCartLiveCameraSettings = settings.constrain();
+            }
+        }, new GBxCartCommands.LiveCameraProgressListener() {
+            @Override
+            public void onProgress(GBxCartCommands.LiveCameraProgress progress) {
+                if (progress.bitmap != null) {
+                    ivGbxCartLiveCameraPreview.setImageBitmap(progress.bitmap);
+                    lastGbxCartLiveCameraBitmap = progress.bitmap;
+                }
+                if (progress.frame != null) {
+                    lastGbxCartLiveCameraFrame = Arrays.copyOf(progress.frame, progress.frame.length);
+                }
+                if (progress.settings != null && cbGbxCartLiveCameraAuto.isChecked()) {
+                    gbxCartLiveCameraSettings = progress.settings.constrain();
+                    updateGbxCartLiveCameraControlsFromSettings(gbxCartLiveCameraSettings);
+                }
+                tvGbxCartLiveCameraStatus.setText(progress.status);
+            }
+
+            @Override
+            public void onStopped() {
+                gbxCartLiveCameraTask = null;
+                if (btnGbxCartLiveCamera != null) {
+                    btnGbxCartLiveCamera.setText("GBxCart Live Camera");
+                }
+                if (tvGbxCartLiveCameraStatus != null) {
+                    tvGbxCartLiveCameraStatus.setText("GBxCart live camera stopped");
+                }
+            }
+        });
+        gbxCartLiveCameraTask.execute();
+    }
+
+    private void stopGbxCartLiveCamera(boolean updateStatus) {
+        if (gbxCartLiveCameraTask != null) {
+            gbxCartLiveCameraTask.cancel(true);
+            gbxCartLiveCameraTask = null;
+        }
+        if (btnGbxCartLiveCamera != null) {
+            btnGbxCartLiveCamera.setText("GBxCart Live Camera");
+        }
+        if (updateStatus && tvGbxCartLiveCameraStatus != null) {
+            tvGbxCartLiveCameraStatus.setText("GBxCart live camera stopped");
+        }
+    }
+
+    private void setupGbxCartLiveCameraControls() {
+        sbGbxCartLiveCameraGain.setMax(GBxCartCommands.MAX_GAIN_INDEX);
+        sbGbxCartLiveCameraVoltage.setMax((GBxCartCommands.MAX_VOLTAGE_OUT_MILLIVOLTS - GBxCartCommands.MIN_VOLTAGE_OUT_MILLIVOLTS) / GBxCartCommands.VOLTAGE_OUT_STEP_MILLIVOLTS);
+        sbGbxCartLiveCameraEdge.setMax(GBxCartCommands.MAX_EDGE_OPERATION_INDEX);
+        sbGbxCartLiveCameraContrast.setMax(GBxCartCommands.MAX_CONTRAST_LEVEL - GBxCartCommands.MIN_CONTRAST_LEVEL);
+        sbGbxCartLiveCameraDither.setMax(GBxCartCommands.MAX_DITHER_PATTERN_INDEX);
+
+        SeekBar.OnSeekBarChangeListener listener = new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser && !updatingGbxCartLiveCameraControls) {
+                    gbxCartLiveCameraSettings = createGbxCartLiveCameraSettingsFromControls();
+                    updateGbxCartLiveCameraLabels(gbxCartLiveCameraSettings);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                if (!updatingGbxCartLiveCameraControls) {
+                    gbxCartLiveCameraSettings = createGbxCartLiveCameraSettingsFromControls();
+                    updateGbxCartLiveCameraControlsFromSettings(gbxCartLiveCameraSettings);
+                }
+            }
+        };
+
+        sbGbxCartLiveCameraExposure.setOnSeekBarChangeListener(listener);
+        sbGbxCartLiveCameraGain.setOnSeekBarChangeListener(listener);
+        sbGbxCartLiveCameraVoltage.setOnSeekBarChangeListener(listener);
+        sbGbxCartLiveCameraEdge.setOnSeekBarChangeListener(listener);
+        sbGbxCartLiveCameraContrast.setOnSeekBarChangeListener(listener);
+        sbGbxCartLiveCameraDither.setOnSeekBarChangeListener(listener);
+        cbGbxCartLiveCameraDitherHigh.setOnClickListener(v -> {
+            gbxCartLiveCameraSettings = createGbxCartLiveCameraSettingsFromControls();
+            updateGbxCartLiveCameraLabels(gbxCartLiveCameraSettings);
+        });
+        cbGbxCartLiveCameraExposureSnap.setOnClickListener(v -> updateGbxCartLiveCameraControlsFromSettings(gbxCartLiveCameraSettings));
+        cbGbxCartLiveCameraAuto.setOnClickListener(v -> updateGbxCartLiveCameraManualEnabled());
+        updateGbxCartLiveCameraControlsFromSettings(gbxCartLiveCameraSettings);
+    }
+
+    private GBxCartCommands.LiveCameraSettings createGbxCartLiveCameraSettingsFromControls() {
+        int exposure;
+        if (cbGbxCartLiveCameraExposureSnap.isChecked()) {
+            exposure = GBxCartCommands.GB_PHOTO_EXPOSURE_MICROSECONDS[Math.min(sbGbxCartLiveCameraExposure.getProgress(), GBxCartCommands.GB_PHOTO_EXPOSURE_MICROSECONDS.length - 1)];
+        } else {
+            exposure = (sbGbxCartLiveCameraExposure.getProgress() + 0x10) << 4;
+        }
+        int voltage = GBxCartCommands.MIN_VOLTAGE_OUT_MILLIVOLTS + (sbGbxCartLiveCameraVoltage.getProgress() * GBxCartCommands.VOLTAGE_OUT_STEP_MILLIVOLTS);
+        return new GBxCartCommands.LiveCameraSettings(
+                exposure,
+                sbGbxCartLiveCameraGain.getProgress(),
+                voltage,
+                sbGbxCartLiveCameraEdge.getProgress(),
+                true,
+                0,
+                3,
+                1,
+                false,
+                sbGbxCartLiveCameraContrast.getProgress() + GBxCartCommands.MIN_CONTRAST_LEVEL,
+                sbGbxCartLiveCameraDither.getProgress(),
+                cbGbxCartLiveCameraDitherHigh.isChecked()).constrain();
+    }
+
+    private void updateGbxCartLiveCameraControlsFromSettings(GBxCartCommands.LiveCameraSettings settings) {
+        updatingGbxCartLiveCameraControls = true;
+        GBxCartCommands.LiveCameraSettings constrained = settings.constrain();
+        boolean snap = cbGbxCartLiveCameraExposureSnap.isChecked();
+        sbGbxCartLiveCameraExposure.setMax(snap ? GBxCartCommands.GB_PHOTO_EXPOSURE_MICROSECONDS.length - 1 : ((GBxCartCommands.MAX_EXPOSURE_MICROSECONDS >> 4) - 0x10));
+        sbGbxCartLiveCameraExposure.setProgress(snap ? GBxCartCommands.getGbPhotoExposureIndex(constrained.exposureMicroseconds) : ((constrained.exposureMicroseconds >> 4) - 0x10));
+        sbGbxCartLiveCameraGain.setProgress(constrained.gainIndex);
+        sbGbxCartLiveCameraVoltage.setProgress((constrained.voltageOutMillivolts - GBxCartCommands.MIN_VOLTAGE_OUT_MILLIVOLTS) / GBxCartCommands.VOLTAGE_OUT_STEP_MILLIVOLTS);
+        sbGbxCartLiveCameraEdge.setProgress(constrained.edgeOperation);
+        sbGbxCartLiveCameraContrast.setProgress(constrained.contrastLevel - GBxCartCommands.MIN_CONTRAST_LEVEL);
+        sbGbxCartLiveCameraDither.setProgress(constrained.ditherPattern);
+        cbGbxCartLiveCameraDitherHigh.setChecked(constrained.ditherHighLight);
+        updatingGbxCartLiveCameraControls = false;
+        updateGbxCartLiveCameraLabels(constrained);
+        updateGbxCartLiveCameraManualEnabled();
+    }
+
+    private void updateGbxCartLiveCameraLabels(GBxCartCommands.LiveCameraSettings settings) {
+        GBxCartCommands.LiveCameraSettings constrained = settings.constrain();
+        tvGbxCartLiveCameraExposure.setText("Exposure: " + constrained.exposureMicroseconds + " us");
+        tvGbxCartLiveCameraGain.setText("Gain: " + GBxCartCommands.getGainLabel(constrained.gainIndex));
+        tvGbxCartLiveCameraVoltage.setText("Voltage out: " + constrained.voltageOutMillivolts + " mV");
+        tvGbxCartLiveCameraEdge.setText("Edge: " + GBxCartCommands.getEdgeLabel(constrained.edgeOperation));
+        tvGbxCartLiveCameraContrast.setText("Contrast: " + constrained.contrastLevel);
+        tvGbxCartLiveCameraDither.setText("Dither: " + GBxCartCommands.getDitherLabel(constrained.ditherPattern));
+    }
+
+    private void updateGbxCartLiveCameraManualEnabled() {
+        boolean enabled = !cbGbxCartLiveCameraAuto.isChecked();
+        cbGbxCartLiveCameraExposureSnap.setEnabled(enabled);
+        sbGbxCartLiveCameraExposure.setEnabled(enabled);
+        sbGbxCartLiveCameraGain.setEnabled(enabled);
+        sbGbxCartLiveCameraVoltage.setEnabled(enabled);
+        sbGbxCartLiveCameraEdge.setEnabled(enabled);
+        sbGbxCartLiveCameraContrast.setEnabled(enabled);
+        sbGbxCartLiveCameraDither.setEnabled(enabled);
+        cbGbxCartLiveCameraDitherHigh.setEnabled(enabled);
+    }
+
+    private void saveLastGbxCartLiveCameraFrame() {
+        if (lastGbxCartLiveCameraFrame == null || lastGbxCartLiveCameraBitmap == null) {
+            toast(getContext(), "No GBxCart live frame to save yet");
+            return;
+        }
+        try {
+            byte[] frame = Arrays.copyOf(lastGbxCartLiveCameraFrame, lastGbxCartLiveCameraFrame.length);
+            GbcImage gbcImage = new GbcImage();
+            gbcImage.setImageBytes(frame);
+            String hashHex = Utils.bytesToHex(MessageDigest.getInstance("SHA-256").digest(frame));
+            if (gbxCartLiveCameraHashExists(hashHex, new ArrayList<>())) {
+                hashHex = createGbxCartLiveCameraDuplicateHash(hashHex, new ArrayList<>());
+                gbcImage.addTag(FILTER_DUPLICATED);
+            }
+            gbcImage.setHashCode(hashHex);
+            gbcImage.setName("GBxCart Live Camera");
+            List<GbcImage> images = new ArrayList<>();
+            images.add(gbcImage);
+            List<Bitmap> bitmaps = new ArrayList<>();
+            Bitmap.Config config = lastGbxCartLiveCameraBitmap.getConfig() == null ? Bitmap.Config.ARGB_8888 : lastGbxCartLiveCameraBitmap.getConfig();
+            bitmaps.add(lastGbxCartLiveCameraBitmap.copy(config, true));
+            new SaveImageAsyncTask(images, bitmaps, getContext(), null, 0, null, null, true).execute();
+            toast(getContext(), "Saved GBxCart live frame to gallery");
+        } catch (Exception e) {
+            toast(getContext(), "Could not save GBxCart live frame: " + e);
+        }
+    }
+
+    private String createGbxCartLiveCameraDuplicateHash(String originalHash, List<GbcImage> pendingImages) {
+        int suffix = 1;
+        String candidate;
+        do {
+            candidate = originalHash + "-gbxcart-live-" + suffix++;
+        } while (gbxCartLiveCameraHashExists(candidate, pendingImages));
+        return candidate;
+    }
+
+    private boolean gbxCartLiveCameraHashExists(String hash, List<GbcImage> pendingImages) {
+        for (GbcImage existingImage : Utils.gbcImagesList) {
+            if (existingImage.getHashCode().equals(hash)) {
+                return true;
+            }
+        }
+        for (GbcImage pendingImage : pendingImages) {
+            if (pendingImage.getHashCode().equals(hash)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void startPicoGbSerialReceiving() {

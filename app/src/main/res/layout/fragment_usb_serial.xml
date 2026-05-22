@@ -181,6 +181,16 @@
                 android:visibility="gone"></Button>
 
             <Button
+                android:id="@+id/btnGbxCartLiveCamera"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="5dp"
+                android:backgroundTint="#4E77BF"
+                android:text="GBxCart Live Camera"
+                android:textSize="15sp"
+                android:visibility="gone"></Button>
+
+            <Button
                 android:id="@+id/btnReadPicNRec"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -543,6 +553,148 @@
                     android:adjustViewBounds="true"
                     android:background="#D5D5D5"
                     android:scaleType="fitCenter" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layoutGbxCartLiveCameraControls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="10dp"
+            android:layout_marginTop="6dp"
+            android:orientation="vertical"
+            android:padding="6dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/ivGbxCartLiveCameraPreview"
+                    android:layout_width="160dp"
+                    android:layout_height="140dp"
+                    android:adjustViewBounds="true"
+                    android:background="#D5D5D5"
+                    android:scaleType="fitCenter" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvGbxCartLiveCameraStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="GBxCart live camera idle"
+                        android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/btnSaveGbxCartLiveCameraFrame"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:backgroundTint="#4EBF52"
+                        android:text="Save Last Frame" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <CheckBox
+                android:id="@+id/cbGbxCartLiveCameraAuto"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Automatic adjustment" />
+
+            <CheckBox
+                android:id="@+id/cbGbxCartLiveCameraExposureSnap"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="Constrain exposure to gb-photo values" />
+
+            <TextView
+                android:id="@+id/tvGbxCartLiveCameraExposure"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Exposure" />
+
+            <SeekBar
+                android:id="@+id/sbGbxCartLiveCameraExposure"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:id="@+id/tvGbxCartLiveCameraGain"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Gain" />
+
+            <SeekBar
+                android:id="@+id/sbGbxCartLiveCameraGain"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:id="@+id/tvGbxCartLiveCameraVoltage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Voltage out" />
+
+            <SeekBar
+                android:id="@+id/sbGbxCartLiveCameraVoltage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:id="@+id/tvGbxCartLiveCameraEdge"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Edge" />
+
+            <SeekBar
+                android:id="@+id/sbGbxCartLiveCameraEdge"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:id="@+id/tvGbxCartLiveCameraContrast"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Contrast" />
+
+            <SeekBar
+                android:id="@+id/sbGbxCartLiveCameraContrast"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+                <TextView
+                android:id="@+id/tvGbxCartLiveCameraDither"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                android:text="Dither" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <SeekBar
+                    android:id="@+id/sbGbxCartLiveCameraDither"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1" />
+
+                <CheckBox
+                    android:id="@+id/cbGbxCartLiveCameraDitherHigh"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true"
+                    android:text="High" />
             </LinearLayout>
         </LinearLayout>
 
