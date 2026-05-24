@@ -267,19 +267,11 @@ public class MainActivity extends AppCompatActivity {
 
         requestPermissions();
 
-        Utils.makeDirs();//If permissions granted, create the folders(Keep this for the updated versions with already permissions, to create the frame json folder)
+        Utils.makeDirs();
         createNotificationChannel(getBaseContext());
     }
 
     private void requestPermissions() {
-        if (SDK_INT <= Build.VERSION_CODES.P && ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE, android.Manifest.permission.READ_EXTERNAL_STORAGE},
-                    1);
-            return;
-        }
-
         if (SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
             // Permission is not granted
@@ -408,24 +400,7 @@ public class MainActivity extends AppCompatActivity {
                 Utils.gbcPalettesList.addAll(palettes);
                 //Sort the palettes for the palette grid, showing first the favorites
             } else {
-                StringBuilder stringBuilder = new StringBuilder();
-                int resourcePalettes = R.raw.palettes;
-                try {
-                    InputStream inputStream = getResources().openRawResource(resourcePalettes);
-                    BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-
-                    String line = bufferedReader.readLine();
-                    while (line != null) {
-                        stringBuilder.append(line).append('\n');
-                        line = bufferedReader.readLine();
-                    }
-                    bufferedReader.close();
-                    inputStream.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-                String fileContent = stringBuilder.toString();
-                List<GbcPalette> receivedList = (List<GbcPalette>) JsonReader.jsonCheck(fileContent);
+                List<GbcPalette> receivedList = loadDefaultPalettes();
                 Utils.gbcPalettesList.addAll(receivedList);
                 //Sort the palettes for the palette grid, showing first the favorites
                 for (GbcPalette gbcPalette : receivedList) {
@@ -433,6 +408,17 @@ public class MainActivity extends AppCompatActivity {
                 }
                 for (GbcPalette gbcPalette : Utils.gbcPalettesList) {
                     paletteDao.insert(gbcPalette);
+                }
+            }
+
+            if (!Utils.hashPalettes.containsKey("bw")) {
+                List<GbcPalette> defaultPalettes = loadDefaultPalettes();
+                for (GbcPalette gbcPalette : defaultPalettes) {
+                    if (!Utils.hashPalettes.containsKey(gbcPalette.getPaletteId())) {
+                        Utils.hashPalettes.put(gbcPalette.getPaletteId(), gbcPalette);
+                        Utils.gbcPalettesList.add(gbcPalette);
+                        paletteDao.insert(gbcPalette);
+                    }
                 }
             }
 
@@ -479,6 +465,26 @@ public class MainActivity extends AppCompatActivity {
             return null;
         }
 
+        private List<GbcPalette> loadDefaultPalettes() {
+            StringBuilder stringBuilder = new StringBuilder();
+            int resourcePalettes = R.raw.palettes;
+            try {
+                InputStream inputStream = getResources().openRawResource(resourcePalettes);
+                BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+
+                String line = bufferedReader.readLine();
+                while (line != null) {
+                    stringBuilder.append(line).append('\n');
+                    line = bufferedReader.readLine();
+                }
+                bufferedReader.close();
+                inputStream.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return (List<GbcPalette>) JsonReader.jsonCheck(stringBuilder.toString());
+        }
+
         @Override
         protected void onPostExecute(Void aVoid) {
             GalleryFragment gf = new GalleryFragment();
@@ -489,6 +495,15 @@ public class MainActivity extends AppCompatActivity {
                 mLoadDialog.dismissDialog();
             }
 
+        }
+
+        @Override
+        protected void onError(Throwable throwable) {
+            throwable.printStackTrace();
+            if (mLoadDialog != null && mLoadDialog.isShowing()) {
+                mLoadDialog.dismissDialog();
+            }
+            toast(MainActivity.this, "Error loading restored database");
         }
     }
 

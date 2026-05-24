@@ -34,7 +34,6 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
-import android.provider.Settings;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -426,7 +425,7 @@ public class Utils {
             return backupEntry;
         }
 
-        File backupDir = new File(getLegacySharedBackupRoot(), backupName);
+        File backupDir = new File(DB_BACKUP_FOLDER, backupName);
         if (!backupDir.exists() && !backupDir.mkdirs()) {
             throw new IOException("Unable to create backup directory: " + backupDir);
         }
@@ -450,10 +449,6 @@ public class Utils {
     }
 
     public static boolean showDbBackups(Context context, Activity activity) {
-        if (!ensureAutomaticDownloadsBackupAccess(context)) {
-            return true;
-        }
-
         // Show backups that the current Room schema can migrate from.
         int databaseVersion = StaticValues.db.getOpenHelper().getReadableDatabase().getVersion();
 
@@ -608,7 +603,7 @@ public class Utils {
     public static List<DatabaseBackupEntry> listDatabaseBackups(Context context, int currentDatabaseVersion) {
         List<DatabaseBackupEntry> entries = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
                 ? listSharedDownloadBackups(context)
-                : listLegacySharedBackups();
+                : listAppScopedBackups();
         List<DatabaseBackupEntry> filtered = new ArrayList<>();
         for (DatabaseBackupEntry entry : entries) {
             if (isBackupVersionRestorable(entry.getVersion(), currentDatabaseVersion)) {
@@ -624,27 +619,9 @@ public class Utils {
         return filtered;
     }
 
-    private static boolean ensureAutomaticDownloadsBackupAccess(Context context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
-            return true;
-        }
-
-        Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-        intent.setData(Uri.parse("package:" + context.getPackageName()));
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (intent.resolveActivity(context.getPackageManager()) == null) {
-            intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        }
-
-        context.startActivity(intent);
-        toast(context, context.getString(R.string.toast_manage_storage_db));
-        return false;
-    }
-
-    private static List<DatabaseBackupEntry> listLegacySharedBackups() {
+    private static List<DatabaseBackupEntry> listAppScopedBackups() {
         List<DatabaseBackupEntry> entries = new ArrayList<>();
-        File[] files = getLegacySharedBackupRoot().listFiles();
+        File[] files = DB_BACKUP_FOLDER.listFiles();
         if (files == null) {
             return entries;
         }
@@ -820,11 +797,6 @@ public class Utils {
                 new File(backupDir, DB_NAME_SHM),
                 new File(backupDir, DB_NAME_WAL)
         };
-    }
-
-    private static File getLegacySharedBackupRoot() {
-        File downloadsRoot = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-        return new File(downloadsRoot, MAIN_FOLDER_NAME + File.separator + DB_BACKUP_FOLDER_NAME);
     }
 
     private static String getSharedBackupRelativeRoot() {

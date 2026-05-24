@@ -2,6 +2,7 @@ package com.mraulio.gbcameramanager.utils;
 
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -9,6 +10,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class AppTask<Params, Progress, Result> {
+    private static final String TAG = "AppTask";
     private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
 
@@ -19,12 +21,23 @@ public abstract class AppTask<Params, Progress, Result> {
     public final AppTask<Params, Progress, Result> execute(Params... params) {
         onPreExecute();
         future = EXECUTOR.submit(() -> {
-            Result result = doInBackground(params);
+            Result result = null;
+            Throwable error = null;
+            try {
+                result = doInBackground(params);
+            } catch (Throwable throwable) {
+                error = throwable;
+                Log.e(TAG, "Background task failed", throwable);
+            }
+            Result finalResult = result;
+            Throwable finalError = error;
             MAIN_HANDLER.post(() -> {
                 if (isCancelled()) {
-                    onCancelled(result);
+                    onCancelled(finalResult);
+                } else if (finalError != null) {
+                    onError(finalError);
                 } else {
-                    onPostExecute(result);
+                    onPostExecute(finalResult);
                 }
             });
         });
@@ -54,6 +67,9 @@ public abstract class AppTask<Params, Progress, Result> {
     }
 
     protected void onPostExecute(Result result) {
+    }
+
+    protected void onError(Throwable throwable) {
     }
 
     protected void onCancelled(Result result) {
