@@ -101,6 +101,21 @@ public class Utils {
     public static final String CHANNEL_ID = "gbcam_channel";
     public static final String CHANNEL_NAME = "GBCAM Channel";
 
+    public static final int GB_CAMERA_IMAGE_WIDTH = 160;
+    public static final int GB_CAMERA_IMAGE_HEIGHT = 144;
+    private static final int GB_CAMERA_CORE_IMAGE_WIDTH = 128;
+    private static final int GB_CAMERA_CORE_IMAGE_HEIGHT = 112;
+    private static final int GB_CAMERA_TILE_SIZE = 8;
+    private static final int GB_CAMERA_TILE_BYTES = 16;
+    private static final int GB_CAMERA_IMAGE_TILE_COLUMNS = GB_CAMERA_IMAGE_WIDTH / GB_CAMERA_TILE_SIZE;
+    private static final int GB_CAMERA_CORE_IMAGE_TILE_COLUMNS = GB_CAMERA_CORE_IMAGE_WIDTH / GB_CAMERA_TILE_SIZE;
+    private static final int GB_CAMERA_CORE_IMAGE_TILE_ROWS = GB_CAMERA_CORE_IMAGE_HEIGHT / GB_CAMERA_TILE_SIZE;
+    private static final int GB_CAMERA_BORDER_TILE_COLUMNS = (GB_CAMERA_IMAGE_WIDTH - GB_CAMERA_CORE_IMAGE_WIDTH) / GB_CAMERA_TILE_SIZE / 2;
+    private static final int GB_CAMERA_BORDER_TILE_ROWS = (GB_CAMERA_IMAGE_HEIGHT - GB_CAMERA_CORE_IMAGE_HEIGHT) / GB_CAMERA_TILE_SIZE / 2;
+    public static final int GB_CAMERA_IMAGE_BYTES_PER_PIXEL_ROW = GB_CAMERA_IMAGE_TILE_COLUMNS * GB_CAMERA_TILE_BYTES / GB_CAMERA_TILE_SIZE;
+    public static final int GB_CAMERA_FULL_IMAGE_BYTES = GB_CAMERA_IMAGE_TILE_COLUMNS * (GB_CAMERA_IMAGE_HEIGHT / GB_CAMERA_TILE_SIZE) * GB_CAMERA_TILE_BYTES;
+    public static final int GB_CAMERA_BORDERLESS_IMAGE_BYTES = GB_CAMERA_CORE_IMAGE_TILE_COLUMNS * GB_CAMERA_CORE_IMAGE_TILE_ROWS * GB_CAMERA_TILE_BYTES;
+
     private static final String DB_NAME = "Database";
     private static final String DB_NAME_SHM = "Database-shm";
     private static final String DB_NAME_WAL = "Database-wal";
@@ -223,8 +238,38 @@ public class Utils {
     }
 
     public static byte[] encodeImage(Bitmap bitmap, String paletteId) throws IOException {
-        Codec decoder = new ImageCodec(160, bitmap.getHeight());
+        Codec decoder = new ImageCodec(GB_CAMERA_IMAGE_WIDTH, bitmap.getHeight());
         return decoder.encodeInternal(bitmap, paletteId);
+    }
+
+    public static boolean isBorderlessGbcImageBytes(byte[] imageBytes) {
+        return imageBytes != null && imageBytes.length == GB_CAMERA_BORDERLESS_IMAGE_BYTES;
+    }
+
+    public static byte[] ensureGbcImageHasBlackBorder(byte[] imageBytes) {
+        if (!isBorderlessGbcImageBytes(imageBytes)) {
+            return imageBytes;
+        }
+
+        byte[] borderedImageBytes = new byte[GB_CAMERA_FULL_IMAGE_BYTES];
+        for (int byteIndex = 0; byteIndex < borderedImageBytes.length; byteIndex++) {
+            borderedImageBytes[byteIndex] = (byte) 0xFF;
+        }
+
+        int sourceRowLength = GB_CAMERA_CORE_IMAGE_TILE_COLUMNS * GB_CAMERA_TILE_BYTES;
+        for (int tileRow = 0; tileRow < GB_CAMERA_CORE_IMAGE_TILE_ROWS; tileRow++) {
+            int sourceOffset = tileRow * sourceRowLength;
+            int targetOffset = ((tileRow + GB_CAMERA_BORDER_TILE_ROWS) * GB_CAMERA_IMAGE_TILE_COLUMNS + GB_CAMERA_BORDER_TILE_COLUMNS) * GB_CAMERA_TILE_BYTES;
+            System.arraycopy(imageBytes, sourceOffset, borderedImageBytes, targetOffset, sourceRowLength);
+        }
+        return borderedImageBytes;
+    }
+
+    public static int getGbcImageHeight(byte[] imageBytes) {
+        if (imageBytes == null || imageBytes.length == 0) {
+            return 1;
+        }
+        return Math.max(1, imageBytes.length / GB_CAMERA_IMAGE_BYTES_PER_PIXEL_ROW);
     }
 
     public static byte[] convertToByteArray(String data) {

@@ -1174,8 +1174,9 @@ public class GalleryUtils {
     //Change palette
     public static Bitmap paletteChanger(String paletteId, byte[] imageBytes,
                                         boolean invertPalette) {
-        ImageCodec imageCodec = new ImageCodec(160, imageBytes.length / 40);//imageBytes.length/40 to get the height of the image
-        Bitmap image = imageCodec.decodeWithPalette(hashPalettes.get(paletteId).getPaletteColorsInt(), imageBytes, invertPalette);
+        byte[] displayBytes = Utils.ensureGbcImageHasBlackBorder(imageBytes);
+        ImageCodec imageCodec = new ImageCodec(Utils.GB_CAMERA_IMAGE_WIDTH, Utils.getGbcImageHeight(displayBytes));//imageBytes.length/40 to get the height of the image
+        Bitmap image = imageCodec.decodeWithPalette(hashPalettes.get(paletteId).getPaletteColorsInt(), displayBytes, invertPalette);
 
         return image;
     }

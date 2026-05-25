@@ -1125,12 +1125,12 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
     }
 
     private void saveLastGbxCartLiveCameraFrame() {
-        if (lastGbxCartLiveCameraFrame == null || lastGbxCartLiveCameraBitmap == null) {
+        if (lastGbxCartLiveCameraFrame == null) {
             toast(getContext(), "No GBxCart live frame to save yet");
             return;
         }
         try {
-            byte[] frame = Arrays.copyOf(lastGbxCartLiveCameraFrame, lastGbxCartLiveCameraFrame.length);
+            byte[] frame = Utils.ensureGbcImageHasBlackBorder(Arrays.copyOf(lastGbxCartLiveCameraFrame, lastGbxCartLiveCameraFrame.length));
             GbcImage gbcImage = new GbcImage();
             gbcImage.setImageBytes(frame);
             String hashHex = Utils.bytesToHex(MessageDigest.getInstance("SHA-256").digest(frame));
@@ -1143,8 +1143,8 @@ public class UsbSerialFragment extends Fragment implements SerialInputOutputMana
             List<GbcImage> images = new ArrayList<>();
             images.add(gbcImage);
             List<Bitmap> bitmaps = new ArrayList<>();
-            Bitmap.Config config = lastGbxCartLiveCameraBitmap.getConfig() == null ? Bitmap.Config.ARGB_8888 : lastGbxCartLiveCameraBitmap.getConfig();
-            bitmaps.add(lastGbxCartLiveCameraBitmap.copy(config, true));
+            ImageCodec imageCodec = new ImageCodec(Utils.GB_CAMERA_IMAGE_WIDTH, Utils.GB_CAMERA_IMAGE_HEIGHT);
+            bitmaps.add(imageCodec.decodeWithPalette(IndexedPalette.EVEN_DIST_PALETTE, frame, false));
             new SaveImageAsyncTask(images, bitmaps, getContext(), null, 0, null, null, true).execute();
             toast(getContext(), "Saved GBxCart live frame to gallery");
         } catch (Exception e) {

@@ -507,7 +507,7 @@ public final class GbStorageSyncManager {
         image.setRotation(imageJson.optInt("rotation", response.optInt("rotation", 0)));
         image.setTags(jsonArrayToTags(imageJson.optJSONArray("tags")));
         image.setImageMetadata(jsonObjectToMap(imageJson.optJSONObject("meta")));
-        image.setImageBytes(decodeCompressedTileBytes(payload.optString(image.getHashCode())));
+        image.setImageBytes(Utils.ensureGbcImageHasBlackBorder(decodeCompressedTileBytes(payload.optString(image.getHashCode()))));
         image.setGbStorageSyncStatus(localContainsHash(image.getHashCode()) ? GbcImage.GB_STORAGE_SYNCED : GbcImage.GB_STORAGE_SYNC_NOT_SYNCED);
         RemoteGbStorageImage remoteImage = new RemoteGbStorageImage(listImage.id, image);
         remoteImage.previewBitmap = listImage.previewBitmap;
@@ -955,8 +955,8 @@ public final class GbStorageSyncManager {
             return null;
         }
 
-        int height = Math.max(1, imageBytes.length / 40);
-        ImageCodec imageCodec = new ImageCodec(160, height);
+        int height = Utils.getGbcImageHeight(imageBytes);
+        ImageCodec imageCodec = new ImageCodec(Utils.GB_CAMERA_IMAGE_WIDTH, height);
         GbcPalette palette = Utils.hashPalettes.get(gbcImage.getPaletteId());
         if (palette == null) {
             palette = Utils.hashPalettes.get("bw");
@@ -985,7 +985,9 @@ public final class GbStorageSyncManager {
 
     private static byte[] resolveImageBytes(GbcImage gbcImage) {
         if (gbcImage.getImageBytes() != null && gbcImage.getImageBytes().length > 0) {
-            return gbcImage.getImageBytes();
+            byte[] imageBytes = Utils.ensureGbcImageHasBlackBorder(gbcImage.getImageBytes());
+            gbcImage.setImageBytes(imageBytes);
+            return imageBytes;
         }
 
         if (StaticValues.db == null) {
@@ -994,6 +996,7 @@ public final class GbStorageSyncManager {
 
         ImageDataDao imageDataDao = StaticValues.db.imageDataDao();
         byte[] imageBytes = imageDataDao.getDataByImageId(gbcImage.getHashCode());
+        imageBytes = Utils.ensureGbcImageHasBlackBorder(imageBytes);
         gbcImage.setImageBytes(imageBytes);
         return imageBytes;
     }
@@ -1090,7 +1093,10 @@ public final class GbStorageSyncManager {
         for (int index = 0; index < batch.size(); index++) {
             GbcImage gbcImage = batch.get(index);
             String hashCode = gbcImage.getHashCode();
-            byte[] imageBytes = gbcImage.getImageBytes();
+            byte[] imageBytes = resolveImageBytes(gbcImage);
+            if (imageBytes == null || imageBytes.length == 0) {
+                throw new IOException("Missing image data for " + gbcImage.getName());
+            }
             String rawHex = Utils.bytesToHex(imageBytes);
             StringBuilder formattedHex = new StringBuilder(rawHex.length() + (rawHex.length() / 32));
             for (int i = 0; i < rawHex.length(); i++) {

@@ -43,14 +43,15 @@ public class LoadBitmapCacheAsyncTask extends AppTask<Void, Void, Result> {
 //                Get the image bytes from the database for the current gbcImage
             if (image == null) {
                 imageBytes = imageDataDao.getDataByImageId(imageHash);
+                imageBytes = Utils.ensureGbcImageHasBlackBorder(imageBytes);
                 //Set the image bytes to the object
                 gbcImage.setImageBytes(imageBytes);
                 if (gbcImage.getFramePaletteId() == null) {
                     gbcImage.setFramePaletteId("bw");
                 }
                 //Create the image bitmap
-                int height = (imageBytes.length + 1) / 40;//To get the real height of the image
-                ImageCodec imageCodec = new ImageCodec(160, height);
+                int height = Utils.getGbcImageHeight(imageBytes);//To get the real height of the image
+                ImageCodec imageCodec = new ImageCodec(Utils.GB_CAMERA_IMAGE_WIDTH, height);
                 GbcFrame gbcFrame = Utils.hashFrames.get(gbcImage.getFrameId());
 
                 image = imageCodec.decodeWithPalette(Utils.hashPalettes.get(gbcImage.getPaletteId()).getPaletteColorsInt(), imageBytes, gbcImage.isInvertPalette());//Add the bitmap to the cache

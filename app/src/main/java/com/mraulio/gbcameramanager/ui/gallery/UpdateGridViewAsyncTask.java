@@ -44,14 +44,15 @@ public class UpdateGridViewAsyncTask extends AppTask<Void, Void, Void> {
                 if (!loadDialog.isShowing())
                     publishProgress();
                 imageBytes = imageDataDao.getDataByImageId(imageHash);
+                imageBytes = Utils.ensureGbcImageHasBlackBorder(imageBytes);
                 //Set the image bytes to the object
                 gbcImage.setImageBytes(imageBytes);
                 if (gbcImage.getFramePaletteId() == null) {
                     gbcImage.setFramePaletteId("bw");
                 }
                 //Create the image bitmap
-                int height = (imageBytes.length + 1) / 40;//To get the real height of the image
-                ImageCodec imageCodec = new ImageCodec(160, height);
+                int height = Utils.getGbcImageHeight(imageBytes);//To get the real height of the image
+                ImageCodec imageCodec = new ImageCodec(Utils.GB_CAMERA_IMAGE_WIDTH, height);
 
                 image = imageCodec.decodeWithPalette(Utils.hashPalettes.get(gbcImage.getPaletteId()).getPaletteColorsInt(), imageBytes, gbcImage.isInvertPalette());
                 //Add the bitmap to the cache
