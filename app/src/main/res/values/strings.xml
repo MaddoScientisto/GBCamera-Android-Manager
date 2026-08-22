@@ -195,6 +195,7 @@
     <string name="animation_mp4_only_limit">GIF export is limited to 200 frames. Use MP4 for larger animations.</string>
     <string name="json_backup_item">JSON Backup</string>
     <string name="dialog_close_button">Close</string>
+    <string name="share">Share</string>
     <string name="select_minimum_toast">Select at least 2 images</string>
     <string name="unselect_all_toast">Unselect all before filtering</string>
     <string name="delete_all_title">Delete selected images?</string>
@@ -337,8 +338,33 @@
 
     <string name="add_neutral_rgb">Add neutral</string>
     <string name="select_rgb">Select 3/4 images</string>
+    <string name="rgb_item">RGB</string>
+    <string name="average_rgb_item">Average+RGB</string>
+    <string name="select_rgb_batch">Select 3 images or a valid RGB batch divisible by 3 or 4.</string>
+    <string name="select_average_rgb">Select at least 6 images for Average+RGB, with a count divisible by 3 or 4.</string>
+    <string name="rgb_grouping_by_image">By image (RGBRGBRGB)</string>
+    <string name="rgb_grouping_by_color">By color (RRRGGGBBB)</string>
+    <string name="rgb_grouping_label">Grouping</string>
+    <string name="average_rgb_aeb_label">AEB steps</string>
+    <string name="rgb_channel_order_label">Channel order</string>
+    <string name="rgb_position_one">Position 1</string>
+    <string name="rgb_position_two">Position 2</string>
+    <string name="rgb_position_three">Position 3</string>
+    <string name="rgb_position_four">Position 4</string>
+    <string name="rgb_batch_order_error">Assign each active channel exactly once.</string>
+    <string name="rgb_batch_invalid_count">%1$s needs a selection count divisible by %2$d.</string>
+    <string name="average_rgb_requires_groups">Average+RGB requires at least two RGB groups.</string>
+    <string name="average_rgb_aeb_invalid_count">With AEB %1$d, Average+RGB needs a selection count divisible by %2$d.</string>
+    <string name="rgb_batch_status">%1$d RGB image(s) will be created.</string>
+    <string name="average_rgb_status">%1$d RGB group(s) will be averaged into one RGB image.</string>
+    <string name="rgb_saved_count">Saved %1$d image(s).</string>
 
     <string name="menu_extra_gallery">Extra gallery</string>
+    <string name="delete_selected_extra">Delete selected</string>
+    <string name="delete_selected_extra_title">Delete selected extra-gallery images?</string>
+    <string name="delete_selected_extra_message">This will permanently delete %1$d selected file(s).</string>
+    <string name="delete_selected_extra_success">Deleted %1$d file(s).</string>
+    <string name="delete_selected_extra_partial">Deleted %1$d of %2$d file(s).</string>
     <string name="action_toggle_info">Toggle info</string>
     <string name="settings_show_extra_gallery">Show extra gallery</string>
     <string name="settings_show_gbstorage">Enable GB Storage</string>

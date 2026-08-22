@@ -1083,34 +1083,20 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
                 return true;
             case R.id.action_rgb:
                 if (!selectedImages.isEmpty()) {
-                    if (selectedImages.size() != 3 && selectedImages.size() != 4) {
-                        Utils.toast(getContext(), getString(R.string.select_rgb));
+                    if (RgbUtils.shouldUseLegacyRgbDialog(selectedImages.size()) || RgbUtils.isBatchRgbSelectionValid(RgbUtils.MODE_RGB, selectedImages.size())) {
+                        launchRgbComposition(RgbUtils.MODE_RGB);
                     } else {
-                        List<Bitmap> bitmapList = new ArrayList<>();
-
-                        for (int i : selectedImages) {
-                            Bitmap bitmap = imageBitmapCache.get(filteredGbcImages.get(i).getHashCode()).copy(imageBitmapCache.get(filteredGbcImages.get(i).getHashCode()).getConfig(), true);
-                            bitmap = rotateBitmap(bitmap, (filteredGbcImages.get(i)));
-                            bitmapList.add(bitmap);
-                        }
-                        int width = bitmapList.get(0).getWidth();
-                        int height = bitmapList.get(0).getHeight();
-                        boolean sameSize = true;
-                        for (Bitmap bitmap : bitmapList) {
-                            if (bitmap.getWidth() != width || bitmap.getHeight() != height) {
-                                sameSize = false;
-                            }
-                        }
-                        if (sameSize) {
-                            List<GbcImage> gbcImages = new ArrayList<>();
-                            for (int i : selectedImages) {
-                                gbcImages.add(filteredGbcImages.get(i));
-                            }
-                            RgbUtils rgbUtils = new RgbUtils(getContext(), bitmapList, false,gbcImages);
-                            rgbUtils.showRgbDialog(null);
-                        } else {
-                            Utils.toast(getContext(), getString(R.string.sizes_exception));
-                        }
+                        Utils.toast(getContext(), getString(R.string.select_rgb_batch));
+                    }
+                } else
+                    Utils.toast(getContext(), getString(R.string.no_selected));
+                return true;
+            case R.id.action_average_rgb:
+                if (!selectedImages.isEmpty()) {
+                    if (RgbUtils.isBatchRgbSelectionValid(RgbUtils.MODE_AVERAGE_RGB, selectedImages.size())) {
+                        launchRgbComposition(RgbUtils.MODE_AVERAGE_RGB);
+                    } else {
+                        Utils.toast(getContext(), getString(R.string.select_average_rgb));
                     }
                 } else
                     Utils.toast(getContext(), getString(R.string.no_selected));
@@ -1335,6 +1321,50 @@ public class GalleryFragment extends Fragment implements SerialInputOutputManage
         if (syncItem != null) {
             syncItem.setVisible(showGbStorage && selectionMode[0] && !selectedImages.isEmpty());
         }
+    }
+
+    private void launchRgbComposition(String mode) {
+        List<Integer> indexesToLoad = new ArrayList<>();
+        for (int index : selectedImages) {
+            String hashCode = filteredGbcImages.get(index).getHashCode();
+            if (imageBitmapCache.get(hashCode) == null) {
+                indexesToLoad.add(index);
+            }
+        }
+
+        loadDialog.setLoadingDialogText("");
+        loadDialog.showDialog();
+        LoadBitmapCacheAsyncTask asyncTask = new LoadBitmapCacheAsyncTask(indexesToLoad, loadDialog, result -> {
+            List<Bitmap> bitmapList = new ArrayList<>();
+            List<GbcImage> gbcImages = new ArrayList<>();
+
+            for (int index : selectedImages) {
+                Bitmap cachedBitmap = imageBitmapCache.get(filteredGbcImages.get(index).getHashCode());
+                if (cachedBitmap == null) {
+                    Utils.toast(getContext(), getString(R.string.no_selected));
+                    loadDialog.dismissDialog();
+                    return;
+                }
+
+                Bitmap.Config config = cachedBitmap.getConfig() == null ? Bitmap.Config.ARGB_8888 : cachedBitmap.getConfig();
+                Bitmap bitmap = cachedBitmap.copy(config, true);
+                bitmap = rotateBitmap(bitmap, filteredGbcImages.get(index));
+                bitmapList.add(bitmap);
+                gbcImages.add(filteredGbcImages.get(index));
+            }
+
+            if (!RgbUtils.hasMatchingDimensions(bitmapList)) {
+                Utils.toast(getContext(), getString(R.string.sizes_exception));
+            } else if (RgbUtils.MODE_RGB.equals(mode) && RgbUtils.shouldUseLegacyRgbDialog(bitmapList.size())) {
+                RgbUtils rgbUtils = new RgbUtils(getContext(), bitmapList, false, gbcImages);
+                rgbUtils.showRgbDialog(null);
+            } else {
+                RgbUtils.showBatchComposeDialog(getContext(), bitmapList, false, mode, null);
+            }
+
+            loadDialog.dismissDialog();
+        });
+        asyncTask.execute();
     }
 
 

@@ -23,6 +23,7 @@ import android.net.Uri;
 import android.os.Bundle;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.widget.TooltipCompat;
 import androidx.core.content.FileProvider;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -31,28 +32,36 @@ import androidx.recyclerview.widget.RecyclerView;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.LayoutInflater;
+import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.CheckBox;
 import android.widget.ProgressBar;
+import android.widget.RadioButton;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.mraulio.gbcameramanager.R;
 
+import com.mraulio.gbcameramanager.ui.gallery.GalleryUtils;
 import com.mraulio.gbcameramanager.ui.gallery.RgbUtils;
+import com.mraulio.gbcameramanager.utils.UnicodeExifInterface;
 import com.mraulio.gbcameramanager.utils.StaticValues;
 import com.mraulio.gbcameramanager.utils.Utils;
 
+import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -181,9 +190,12 @@ public class ExtraGalleryFragment extends Fragment implements RgbUtils.OnRgbSave
 
                         Button btnClose = dialogView.findViewById(R.id.btn_close_extra);
                         Button btnShare = dialogView.findViewById(R.id.btn_share_extra);
+                        Button btnSave = dialogView.findViewById(R.id.btn_save_extra);
                         Button btnDelete = dialogView.findViewById(R.id.btn_delete_extra);
                         btnShare.setVisibility(VISIBLE);
+                        btnSave.setVisibility(VISIBLE);
                         btnDelete.setVisibility(VISIBLE);
+                        setPreviewActionTooltips(btnSave, btnShare);
 
                         AlertDialog dialog = builder.create();
 
@@ -197,27 +209,14 @@ public class ExtraGalleryFragment extends Fragment implements RgbUtils.OnRgbSave
                         btnShare.setOnClickListener(new View.OnClickListener() {
                             @Override
                             public void onClick(View v) {
-                                ArrayList<Uri> imageUris = new ArrayList<>();
+                                showExtraExportOptionsDialog(fileList.get(globalImageIndex), true);
+                            }
+                        });
 
-                                File file = fileList.get(globalImageIndex);
-                                if (isGif(file)) {
-                                    Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", file);
-
-                                    Intent intent = new Intent(Intent.ACTION_SEND);
-                                    intent.setType("image/gif");
-                                    intent.putExtra(Intent.EXTRA_STREAM, uri);
-                                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                                    getContext().startActivity(Intent.createChooser(intent, "Share"));
-
-                                } else {
-                                    Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", file);
-                                    imageUris.add(uri);
-                                    Intent intent = new Intent(Intent.ACTION_SEND_MULTIPLE);
-                                    intent.setType("image/png");
-                                    intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, imageUris);
-                                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                                    getContext().startActivity(Intent.createChooser(intent, "Share"));
-                                }
+                        btnSave.setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                                showExtraExportOptionsDialog(fileList.get(globalImageIndex), false);
                             }
                         });
 
@@ -376,6 +375,15 @@ public class ExtraGalleryFragment extends Fragment implements RgbUtils.OnRgbSave
         activity.invalidateOptionsMenu();
     }
 
+    @Override
+    public void onPrepareOptionsMenu(@NonNull Menu menu) {
+        super.onPrepareOptionsMenu(menu);
+        MenuItem deleteSelectedItem = menu.findItem(R.id.action_delete_selected_extra);
+        if (deleteSelectedItem != null) {
+            deleteSelectedItem.setVisible(selectionModeExtra && !selectedFilesIndex.isEmpty());
+        }
+    }
+
     public void loadAndDisplayImages() {
         fileList = loadFilesFromDirectory(IMAGES_FOLDER);
         itemsPage = StaticValues.imagesPage;
@@ -436,7 +444,7 @@ public class ExtraGalleryFragment extends Fragment implements RgbUtils.OnRgbSave
                     boolean addFile = false;
                     if (swHdr.isChecked() && file.getName().startsWith("HDR")) {
                         addFile = true;
-                    } else if (swRgb.isChecked() && file.getName().startsWith("RGB_")) {
+                    } else if (swRgb.isChecked() && (file.getName().startsWith("RGB_") || file.getName().startsWith("Average_RGB_"))) {
                         addFile = true;
                     } else if (swCollage.isChecked() && file.getName().startsWith("Collage_")) {
                         addFile = true;
@@ -473,9 +481,235 @@ public class ExtraGalleryFragment extends Fragment implements RgbUtils.OnRgbSave
         return bitmap;
     }
 
+    private void launchRgbComposition(String mode) {
+        List<Bitmap> bitmapList = new ArrayList<>();
+        for (int index : selectedFilesIndex) {
+            Bitmap bitmap = getBitmapFromFile(fileList.get(index));
+            if (bitmap != null) {
+                bitmapList.add(bitmap);
+            }
+        }
+
+        if (!RgbUtils.hasMatchingDimensions(bitmapList)) {
+            Utils.toast(getContext(), getString(R.string.sizes_exception));
+            return;
+        }
+
+        if (RgbUtils.MODE_RGB.equals(mode) && RgbUtils.shouldUseLegacyRgbDialog(bitmapList.size())) {
+            RgbUtils rgbUtils = new RgbUtils(getContext(), bitmapList, true, null);
+            rgbUtils.showRgbDialog(this);
+        } else {
+            RgbUtils.showBatchComposeDialog(getContext(), bitmapList, true, mode, this);
+        }
+    }
+
     @Override
     public void onButtonRgbSaved() {
         hideSelectionOptionsExtra(getActivity());
+    }
+
+    private void setPreviewActionTooltips(View saveButton, View shareButton) {
+        setTooltip(saveButton, R.string.tooltip_save_image);
+        setTooltip(shareButton, R.string.tooltip_share_image);
+    }
+
+    private void setTooltip(View view, int resId) {
+        if (view == null) {
+            return;
+        }
+        String tooltip = getString(resId);
+        TooltipCompat.setTooltipText(view, tooltip);
+        view.setContentDescription(tooltip);
+    }
+
+    private void showExtraExportOptionsDialog(File sourceFile, boolean share) {
+        Activity activity = getActivity();
+        if (activity == null || getContext() == null) {
+            return;
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
+        View exportView = activity.getLayoutInflater().inflate(R.layout.dialog_export_options, null);
+        builder.setView(exportView);
+        builder.setTitle(share ? R.string.export_dialog_title_share : R.string.export_dialog_title_save);
+        builder.setNegativeButton(R.string.cancel, null);
+
+        RadioButton rbExportPng = exportView.findViewById(R.id.rbExportPng);
+        RadioButton rbExportTxt = exportView.findViewById(R.id.rbExportTxt);
+        CheckBox cbExportMetadata = exportView.findViewById(R.id.cbExportMetadataDialog);
+        CheckBox cbExportSquare = exportView.findViewById(R.id.cbExportSquareDialog);
+        TextView tvExportSizePrompt = exportView.findViewById(R.id.tvExportSizePrompt);
+
+        boolean gifSource = isGif(sourceFile);
+        rbExportPng.setChecked(true);
+        rbExportTxt.setChecked(false);
+        rbExportTxt.setEnabled(false);
+        cbExportMetadata.setChecked(false);
+        cbExportMetadata.setEnabled(false);
+        cbExportSquare.setChecked(StaticValues.exportSquare);
+        cbExportSquare.setEnabled(!gifSource);
+        tvExportSizePrompt.setEnabled(!gifSource);
+
+        AlertDialog exportDialog = builder.create();
+        int[] buttonIds = new int[]{
+                R.id.btnExport1x, R.id.btnExport2x, R.id.btnExport3x, R.id.btnExport4x, R.id.btnExport5x,
+                R.id.btnExport6x, R.id.btnExport7x, R.id.btnExport8x, R.id.btnExport9x, R.id.btnExport10x
+        };
+        for (int i = 0; i < buttonIds.length; i++) {
+            Button sizeButton = exportView.findViewById(buttonIds[i]);
+            final int exportSize = i + 1;
+            sizeButton.setEnabled(!gifSource || exportSize == 1);
+            sizeButton.setOnClickListener(v -> {
+                GalleryUtils.ExportOptions options = new GalleryUtils.ExportOptions(true, exportSize, cbExportSquare.isChecked(), false);
+                if (share) {
+                    shareExtraFile(sourceFile, options);
+                } else {
+                    saveExtraFile(sourceFile, options);
+                }
+                exportDialog.dismiss();
+            });
+        }
+
+        exportDialog.show();
+    }
+
+    private void saveExtraFile(File sourceFile, GalleryUtils.ExportOptions options) {
+        if (getContext() == null) {
+            return;
+        }
+        File tempFile = null;
+        try {
+            tempFile = buildExtraExportFile(sourceFile, options, true);
+            writeExtraExportFile(sourceFile, tempFile, options);
+            String displayName = buildExtraExportFileName(sourceFile, options);
+            String mimeType = displayName.toLowerCase(Locale.ROOT).endsWith(".gif") ? "image/gif" : "image/png";
+            Utils.SavedExportEntry savedExportEntry = saveFileToConfiguredLocation(tempFile, displayName, mimeType);
+            Toast.makeText(getContext(), getString(R.string.toast_saved), Toast.LENGTH_LONG).show();
+            showNotification(getContext(), savedExportEntry);
+        } catch (IOException e) {
+            e.printStackTrace();
+            toast(getContext(), getString(R.string.animation_export_failed));
+        } finally {
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+            }
+        }
+    }
+
+    private Utils.SavedExportEntry saveFileToConfiguredLocation(File sourceFile, String displayName, String mimeType) throws IOException {
+        Utils.SavedExportEntry savedExportEntry = Utils.saveExportToConfiguredLocation(
+                getContext(), sourceFile, displayName, mimeType, false);
+        if (savedExportEntry == null) {
+            throw new IOException("Unable to save exported image");
+        }
+        return savedExportEntry;
+    }
+
+    private void shareExtraFile(File sourceFile, GalleryUtils.ExportOptions options) {
+        if (getContext() == null) {
+            return;
+        }
+        try {
+            File outputFile = buildExtraExportFile(sourceFile, options, true);
+            writeExtraExportFile(sourceFile, outputFile, options);
+            Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", outputFile);
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType(outputFile.getName().toLowerCase(Locale.ROOT).endsWith(".gif") ? "image/gif" : "image/png");
+            intent.putExtra(Intent.EXTRA_STREAM, uri);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            getContext().startActivity(Intent.createChooser(intent, getString(R.string.share)));
+        } catch (IOException e) {
+            e.printStackTrace();
+            toast(getContext(), getString(R.string.animation_export_failed));
+        }
+    }
+
+    private File buildExtraExportFile(File sourceFile, GalleryUtils.ExportOptions options, boolean cacheFile) {
+        String extension = getExtraExportExtension(sourceFile);
+        if (cacheFile) {
+            return new File(requireContext().getExternalCacheDir(), "extra_export_" + System.currentTimeMillis() + extension);
+        }
+
+        return new File(Utils.IMAGES_FOLDER, buildExtraExportFileName(sourceFile, options));
+    }
+
+    private String buildExtraExportFileName(File sourceFile, GalleryUtils.ExportOptions options) {
+        String baseName = sourceFile.getName();
+        int dotIndex = baseName.lastIndexOf('.');
+        if (dotIndex >= 0) {
+            baseName = baseName.substring(0, dotIndex);
+        }
+        return baseName + "_export_" + options.exportSize + "x" + getExtraExportExtension(sourceFile);
+    }
+
+    private String getExtraExportExtension(File sourceFile) {
+        return sourceFile.getName().toLowerCase(Locale.ROOT).endsWith(".gif") ? ".gif" : ".png";
+    }
+
+    private void writeExtraExportFile(File sourceFile, File outputFile, GalleryUtils.ExportOptions options) throws IOException {
+        if (isGif(sourceFile)) {
+            try (InputStream inputStream = new FileInputStream(sourceFile);
+                 FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+                byte[] buffer = new byte[8192];
+                int length;
+                while ((length = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, length);
+                }
+                outputStream.flush();
+            }
+            return;
+        }
+
+        Bitmap bitmap = getBitmapFromFile(sourceFile);
+        if (bitmap == null) {
+            throw new IOException("Unable to decode bitmap");
+        }
+        if (options.exportSquare) {
+            bitmap = GalleryUtils.makeSquareImage(bitmap);
+        }
+        Bitmap scaled = Bitmap.createScaledBitmap(bitmap, bitmap.getWidth() * options.exportSize, bitmap.getHeight() * options.exportSize, false);
+        try (FileOutputStream out = new FileOutputStream(outputFile)) {
+            scaled.compress(Bitmap.CompressFormat.PNG, 100, out);
+            out.flush();
+        }
+    }
+
+    private void confirmDeleteSelectedExtra() {
+        if (getContext() == null || getActivity() == null || selectedFilesIndex.isEmpty()) {
+            return;
+        }
+
+        int total = selectedFilesIndex.size();
+        new AlertDialog.Builder(getContext())
+                .setTitle(getString(R.string.delete_selected_extra_title))
+                .setMessage(getString(R.string.delete_selected_extra_message, total))
+                .setPositiveButton(getString(R.string.delete), (dialog, which) -> {
+                    int deletedCount = deleteSelectedExtraFiles();
+                    if (deletedCount == total) {
+                        toast(getContext(), getString(R.string.delete_selected_extra_success, deletedCount));
+                    } else {
+                        toast(getContext(), getString(R.string.delete_selected_extra_partial, deletedCount, total));
+                    }
+                    hideSelectionOptionsExtra(getActivity());
+                })
+                .setNegativeButton(getString(R.string.cancel), null)
+                .show();
+    }
+
+    private int deleteSelectedExtraFiles() {
+        List<Integer> indexes = new ArrayList<>(selectedFilesIndex);
+        Collections.sort(indexes, Collections.reverseOrder());
+        int deletedCount = 0;
+        for (int index : indexes) {
+            if (index >= 0 && index < fileList.size()) {
+                File file = fileList.get(index);
+                if (file.delete()) {
+                    deletedCount++;
+                    loadedFilesBitmap.remove(file);
+                }
+            }
+        }
+        return deletedCount;
     }
 
     private class ImageAdapter extends RecyclerView.Adapter<ImageAdapter.ViewHolder> {
@@ -632,6 +866,8 @@ public class ExtraGalleryFragment extends Fragment implements RgbUtils.OnRgbSave
             String fileName = file.getName();
             if (fileName.startsWith("HDR")) {
                 type = "HDR";
+            } else if (fileName.startsWith("Average_RGB")) {
+                type = "Avg+RGB";
             } else if (fileName.startsWith("GIF")) {
                 type = "GIF";
             } else if (fileName.startsWith("RGB")) {
@@ -716,16 +952,25 @@ public class ExtraGalleryFragment extends Fragment implements RgbUtils.OnRgbSave
                                     file = new File(Utils.IMAGES_FOLDER, "HDR_extra_" + sdf.format(nowDate) + ".png");
 
                                 }
-                                try (FileOutputStream out = new FileOutputStream(file)) {
-                                    averagedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+                                File tempFile = null;
+                                try {
+                                    tempFile = File.createTempFile("gbcam_export_", ".png", getContext().getCacheDir());
+                                    try (FileOutputStream out = new FileOutputStream(tempFile)) {
+                                        averagedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+                                    }
+                                    Utils.SavedExportEntry savedExportEntry = saveFileToConfiguredLocation(
+                                            tempFile, file.getName(), "image/png");
                                     Toast toast = Toast.makeText(getContext(), getString(R.string.toast_saved) + " HDR!", Toast.LENGTH_LONG);
                                     toast.show();
-                                    mediaScanner(file, getContext());
-                                    showNotification(getContext(), file);
+                                    showNotification(getContext(), savedExportEntry);
                                     hideSelectionOptionsExtra(getActivity());
                                     dialog.dismiss();
                                 } catch (IOException e) {
                                     e.printStackTrace();
+                                } finally {
+                                    if (tempFile != null && tempFile.exists()) {
+                                        tempFile.delete();
+                                    }
                                 }
                             }
                         });
@@ -740,37 +985,30 @@ public class ExtraGalleryFragment extends Fragment implements RgbUtils.OnRgbSave
 
             case R.id.action_rgb_extra:
                 if (!selectedFilesIndex.isEmpty()) {
-                    if (selectedFilesIndex.size() != 3 && selectedFilesIndex.size() != 4) {
-                        Utils.toast(getContext(), getString(R.string.select_rgb));
+                    if (RgbUtils.shouldUseLegacyRgbDialog(selectedFilesIndex.size()) || RgbUtils.isBatchRgbSelectionValid(RgbUtils.MODE_RGB, selectedFilesIndex.size())) {
+                        launchRgbComposition(RgbUtils.MODE_RGB);
                     } else {
-                        List<Bitmap> bitmapList = new ArrayList<>();
-
-                        for (int i : selectedFilesIndex) {
-                            File file = fileList.get(i);
-
-                            Bitmap bitmap = getBitmapFromFile(file);
-
-                            if (bitmap != null) {
-                                bitmapList.add(bitmap);
-                            }
-                        }
-                        int width = bitmapList.get(0).getWidth();
-                        int height = bitmapList.get(0).getHeight();
-                        boolean sameSize = true;
-                        for (Bitmap bitmap : bitmapList) {
-                            if (bitmap.getWidth() != width || bitmap.getHeight() != height) {
-                                sameSize = false;
-                            }
-                        }
-                        if (sameSize) {
-                            RgbUtils rgbUtils = new RgbUtils(getContext(), bitmapList, true, null);
-                            rgbUtils.showRgbDialog(this);
-                        } else {
-                            Utils.toast(getContext(), getString(R.string.sizes_exception));
-                        }
+                        Utils.toast(getContext(), getString(R.string.select_rgb_batch));
                     }
                 } else
                     Utils.toast(getContext(), getString(R.string.no_selected));
+                return true;
+            case R.id.action_average_rgb_extra:
+                if (!selectedFilesIndex.isEmpty()) {
+                    if (RgbUtils.isBatchRgbSelectionValid(RgbUtils.MODE_AVERAGE_RGB, selectedFilesIndex.size())) {
+                        launchRgbComposition(RgbUtils.MODE_AVERAGE_RGB);
+                    } else {
+                        Utils.toast(getContext(), getString(R.string.select_average_rgb));
+                    }
+                } else
+                    Utils.toast(getContext(), getString(R.string.no_selected));
+                return true;
+            case R.id.action_delete_selected_extra:
+                if (!selectedFilesIndex.isEmpty()) {
+                    confirmDeleteSelectedExtra();
+                } else {
+                    Utils.toast(getContext(), getString(R.string.no_selected));
+                }
                 return true;
 //            case R.id.action_gif_extra:
 //                toast(getContext(), "Nothing yet");
