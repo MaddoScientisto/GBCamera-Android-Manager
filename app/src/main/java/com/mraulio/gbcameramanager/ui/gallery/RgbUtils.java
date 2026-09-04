@@ -536,7 +536,7 @@ public class RgbUtils {
                     file = new File(Utils.IMAGES_FOLDER, prefix + sdf.format(nowDate) + ".png");
                 }
                 try (FileOutputStream out = new FileOutputStream(file)) {
-                    Bitmap bitmap = Bitmap.createScaledBitmap(rgbImage, rgbImage.getWidth() * (extraGallery ? 1 : exportSize), rgbImage.getHeight() * (extraGallery ? 1 : exportSize), false);
+                    Bitmap bitmap = Bitmap.createScaledBitmap(rgbImage, rgbImage.getWidth(), rgbImage.getHeight(), false);
                     //Make square if checked in settings
                     if (exportSquare) {
                         bitmap = makeSquareImage(bitmap);
@@ -869,7 +869,7 @@ public class RgbUtils {
             String suffix = outputs.size() > 1 ? String.format(Locale.getDefault(), "%02d_", index + 1) : "";
             File file = new File(Utils.IMAGES_FOLDER, prefix + suffix + timestamp + ".png");
             try (FileOutputStream out = new FileOutputStream(file)) {
-                Bitmap bitmap = Bitmap.createScaledBitmap(outputs.get(index), outputs.get(index).getWidth() * (extraGallery ? 1 : exportSize), outputs.get(index).getHeight() * (extraGallery ? 1 : exportSize), false);
+                Bitmap bitmap = Bitmap.createScaledBitmap(outputs.get(index), outputs.get(index).getWidth(), outputs.get(index).getHeight(), false);
                 if (exportSquare) {
                     bitmap = makeSquareImage(bitmap);
                 }

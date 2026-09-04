@@ -99,7 +99,8 @@ public class MainActivity extends AppCompatActivity {
         }
 
         openedFromFile = (Intent.ACTION_VIEW.equals(action) || Intent.ACTION_SEND.equals(action)) && type != null;
-        mOpenedFromUsb = UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action);
+        mOpenedFromUsb = UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)
+            || intent.hasExtra(UsbManager.EXTRA_DEVICE);
     }
 
     @Override
@@ -257,6 +258,9 @@ public class MainActivity extends AppCompatActivity {
         }
         NavigationUI.setupActionBarWithNavController(this, mNavController, mAppBarConfiguration);
         NavigationUI.setupWithNavController(navigationView, mNavController);
+        if (doneLoading) {
+            openingFromIntent(mNavController);
+        }
         mNavController.addOnDestinationChangedListener(new NavController.OnDestinationChangedListener() {
             @Override
             public void onDestinationChanged(@NonNull NavController navController, @NonNull NavDestination navDestination, @Nullable Bundle bundle) {
